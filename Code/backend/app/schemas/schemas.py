@@ -95,6 +95,7 @@ class QuestionResponse(BaseModel):
     explanation: str
     difficulty: str
     source_metadata: Dict[str, Any]
+    source_chunk_ids: Optional[List[str]] = None
 
     class Config:
         from_attributes = True

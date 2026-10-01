@@ -1,0 +1,20 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Databases & local uploads
+*.db
+*.sqlite3
+uploads/
+backend/uploads/
+
+# Node & Frontend dependencies/build
+node_modules/
+dist/
+.vite/
+
+# Environment & IDE
+.env
+.vscode/
+.idea/

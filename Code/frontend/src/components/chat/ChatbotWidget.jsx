@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { sendChatMessage } from '../../services/api';
 import { Send, Bot, User, FileText, Presentation, Video, Sparkles } from 'lucide-react';
 
@@ -16,11 +16,27 @@ export default function ChatbotWidget({ selectedCourse, height = "h-96" }) {
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState(null);
 
+  useEffect(() => {
+    setConversationId(null);
+  }, [selectedCourse?.id]);
+
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
 
-    const courseId = selectedCourse?.id || "demo_course";
+    if (!selectedCourse?.id) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          sender: 'assistant',
+          content: "Please select or create a course first before asking questions.",
+          citations: [],
+          is_grounded: false,
+        }
+      ]);
+      return;
+    }
 
     const userMsg = {
       id: Date.now().toString(),
@@ -34,7 +50,7 @@ export default function ChatbotWidget({ selectedCourse, height = "h-96" }) {
     setLoading(true);
 
     try {
-      const res = await sendChatMessage(courseId, currentInput, conversationId);
+      const res = await sendChatMessage(selectedCourse.id, currentInput, conversationId);
       if (res.conversation_id) setConversationId(res.conversation_id);
 
       const botMsg = {
@@ -52,7 +68,7 @@ export default function ChatbotWidget({ selectedCourse, height = "h-96" }) {
         {
           id: (Date.now() + 1).toString(),
           sender: 'assistant',
-          content: "Sorry, an error occurred while processing your question.",
+          content: "Sorry, an error occurred while processing your question. Ensure documents are uploaded and processed for this course.",
           citations: [],
           is_grounded: false,
         }

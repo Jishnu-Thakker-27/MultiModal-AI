@@ -32,6 +32,13 @@ def get_dashboard(course_id: str, db: Session = Depends(get_db)):
         })
 
     avg_progress = round(total_mastery / len(topics), 1) if topics else 0.0
+    
+    # Real database queries for quiz metrics
+    quizzes_completed = repo.get_quiz_attempts_count(course_id)
+    average_quiz_score = repo.get_average_quiz_score(course_id)
+    if quizzes_completed == 0:
+        average_quiz_score = avg_progress
+
     rec = f"Focus on improving '{weak_topics[0]}'" if weak_topics else "Great job! Keep practicing recent topics."
 
     return {
@@ -40,7 +47,7 @@ def get_dashboard(course_id: str, db: Session = Depends(get_db)):
         "overall_progress": avg_progress,
         "topic_masteries": topic_masteries,
         "weak_topics": weak_topics,
-        "quizzes_completed": 0,
-        "average_score": avg_progress,
+        "quizzes_completed": quizzes_completed,
+        "average_score": average_quiz_score,
         "recommended_next_action": rec
     }

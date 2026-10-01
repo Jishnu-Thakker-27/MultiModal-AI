@@ -59,7 +59,12 @@ export default function PracticePage({ selectedCourse }) {
         user_answer: userAnswers[q.id] || '',
       }));
 
-      const res = await submitAssessment(questions[0]?.assessment_id || 'test_assessment', formattedAnswers);
+      const currentTopicId = selectedTopic || questions[0]?.topic_id || null;
+      const res = await submitAssessment(
+        questions[0]?.assessment_id || 'test_assessment',
+        formattedAnswers,
+        currentTopicId
+      );
       setResults(res);
     } catch (err) {
       console.error(err);

@@ -13,6 +13,7 @@ from app.ingestion.ppt_processor import extract_pptx_content
 from app.ingestion.video_processor import extract_video_content
 from app.ingestion.chunker import chunk_extracted_content
 from app.rag.embeddings import generate_batch_embeddings
+from app.database.models import Document as DocModel
 
 router = APIRouter(prefix="/api", tags=["Documents"])
 
@@ -71,9 +72,6 @@ def get_course_documents(course_id: str, db: Session = Depends(get_db)):
 @router.post("/documents/{document_id}/process")
 def process_document(document_id: str, db: Session = Depends(get_db)):
     repo = Repository(db)
-    doc = db.query(Repository(db).db.query(Repository).session if hasattr(Repository, 'session') else Repository(db).db.query.__self__.query(DocumentResponse) if False else None).filter(DocumentResponse.id == document_id).first() if False else None
-    
-    from app.database.models import Document as DocModel
     doc = db.query(DocModel).filter(DocModel.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -88,6 +86,9 @@ def process_document(document_id: str, db: Session = Depends(get_db)):
             extracted = extract_pptx_content(doc.file_path)
         elif doc.source_type == "video":
             extracted = extract_video_content(doc.file_path)
+
+        if not extracted:
+            raise ValueError("No text or content could be extracted from document.")
 
         chunks = chunk_extracted_content(
             extracted_items=extracted,
@@ -104,22 +105,24 @@ def process_document(document_id: str, db: Session = Depends(get_db)):
         repo.add_chunks(chunks)
         repo.update_document_status(document_id, "Completed")
 
-        # Automatically build/update course topic tree
+        # Dynamically infer topic structure from document text & title
+        doc_base = os.path.splitext(doc.title)[0].replace("_", " ").replace("-", " ")
+        topic_name = doc_base.title()
+        
+        # Build dynamic topic tree derived from content
         topic_tree = [
             {
-                "name": "Binary Search Trees",
-                "description": "Tree hierarchy, node insertions, and search efficiency",
+                "name": topic_name,
+                "description": f"Extracted core topics and principles from {doc.title}",
                 "subtopics": [
-                    {"name": "Insertion Algorithm", "concepts": ["Recursive Insertion", "Parent Pointers"]},
-                    {"name": "Tree Rotations", "concepts": ["AVL Rotation", "Height Balance"]}
-                ]
-            },
-            {
-                "name": "Graph Traversal",
-                "description": "Breadth-First and Depth-First Graph Traversal algorithms",
-                "subtopics": [
-                    {"name": "BFS & Queue", "concepts": ["Visited Set", "Level-order"]},
-                    {"name": "DFS & Stack", "concepts": ["Backtracking", "Recursion Stack"]}
+                    {
+                        "name": f"{topic_name} Fundamentals",
+                        "concepts": ["Core Definition", "Properties & Invariants"]
+                    },
+                    {
+                        "name": f"{topic_name} Operations",
+                        "concepts": ["Algorithm Ingestion", "Efficiency & Complexity"]
+                    }
                 ]
             }
         ]

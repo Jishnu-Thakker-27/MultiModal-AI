@@ -1,4 +1,6 @@
+import json
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.database.models import (
     User, Course, Document, DocumentChunk, Topic, Subtopic, Concept,
     Question, QuizAttempt, QuizAnswer, LearnerMastery, Conversation, Message
@@ -84,26 +86,92 @@ class Repository:
         return self.db.query(Topic).filter(Topic.id == topic_id).first()
 
     def save_topic_structure(self, course_id: str, topic_tree: List[Dict[str, Any]]):
-        # Clear existing for fresh ingestion update
-        existing = self.db.query(Topic).filter(Topic.course_id == course_id).all()
-        for t in existing:
-            self.db.delete(t)
-        self.db.commit()
-
         for t_data in topic_tree:
-            topic = Topic(course_id=course_id, name=t_data['name'], description=t_data.get('description'))
-            self.db.add(topic)
-            self.db.flush()
+            t_name = t_data['name']
+            topic = self.db.query(Topic).filter(
+                Topic.course_id == course_id,
+                Topic.name == t_name
+            ).first()
 
-            for st_data in t_data.get('subtopics', []):
-                subtopic = Subtopic(topic_id=topic.id, name=st_data['name'])
-                self.db.add(subtopic)
+            if not topic:
+                topic = Topic(course_id=course_id, name=t_name, description=t_data.get('description'))
+                self.db.add(topic)
                 self.db.flush()
 
+            for st_data in t_data.get('subtopics', []):
+                st_name = st_data['name']
+                subtopic = self.db.query(Subtopic).filter(
+                    Subtopic.topic_id == topic.id,
+                    Subtopic.name == st_name
+                ).first()
+
+                if not subtopic:
+                    subtopic = Subtopic(topic_id=topic.id, name=st_name)
+                    self.db.add(subtopic)
+                    self.db.flush()
+
                 for conc_name in st_data.get('concepts', []):
-                    conc = Concept(subtopic_id=subtopic.id, name=conc_name if isinstance(conc_name, str) else conc_name.get('name', ''))
-                    self.db.add(conc)
+                    c_name = conc_name if isinstance(conc_name, str) else conc_name.get('name', '')
+                    existing_conc = self.db.query(Concept).filter(
+                        Concept.subtopic_id == subtopic.id,
+                        Concept.name == c_name
+                    ).first()
+                    if not existing_conc:
+                        conc = Concept(subtopic_id=subtopic.id, name=c_name)
+                        self.db.add(conc)
         self.db.commit()
+
+    # --- Questions ---
+    def save_question(self, course_id: str, question_text: str, question_type: str, options: Optional[List[str]], correct_answer: str, explanation: str, difficulty: str, source_metadata: Dict[str, Any], topic_id: Optional[str] = None, source_chunk_ids: Optional[List[str]] = None) -> Question:
+        q = Question(
+            course_id=course_id,
+            topic_id=topic_id,
+            question_text=question_text,
+            question_type=question_type,
+            options=options,
+            correct_answer=correct_answer,
+            explanation=explanation,
+            difficulty=difficulty,
+            is_verified=True,
+            source_metadata=source_metadata,
+            source_chunk_ids=source_chunk_ids
+        )
+        self.db.add(q)
+        self.db.commit()
+        self.db.refresh(q)
+        return q
+
+    def get_question(self, question_id: str) -> Optional[Question]:
+        return self.db.query(Question).filter(Question.id == question_id).first()
+
+    # --- Quiz Attempts & Answers ---
+    def create_quiz_attempt(self, user_id: str, course_id: str, total_score: float, topic_id: Optional[str] = None) -> QuizAttempt:
+        attempt = QuizAttempt(user_id=user_id, course_id=course_id, topic_id=topic_id, total_score=total_score)
+        self.db.add(attempt)
+        self.db.commit()
+        self.db.refresh(attempt)
+        return attempt
+
+    def save_quiz_answer(self, attempt_id: str, question_id: str, user_answer: str, is_correct: bool, score: float, feedback: str) -> QuizAnswer:
+        ans = QuizAnswer(
+            attempt_id=attempt_id,
+            question_id=question_id,
+            user_answer=user_answer,
+            is_correct=is_correct,
+            score=score,
+            feedback=feedback
+        )
+        self.db.add(ans)
+        self.db.commit()
+        self.db.refresh(ans)
+        return ans
+
+    def get_quiz_attempts_count(self, course_id: str) -> int:
+        return self.db.query(QuizAttempt).filter(QuizAttempt.course_id == course_id).count()
+
+    def get_average_quiz_score(self, course_id: str) -> float:
+        avg = self.db.query(func.avg(QuizAttempt.total_score)).filter(QuizAttempt.course_id == course_id).scalar()
+        return round(float(avg), 1) if avg is not None else 0.0
 
     # --- Learner Mastery ---
     def get_mastery(self, user_id: str, topic_id: str) -> Optional[LearnerMastery]:
@@ -128,7 +196,6 @@ class Repository:
             if is_correct:
                 mastery.questions_correct += 1
             
-            # Simple transparent exponential moving average update
             alpha = 0.3
             target = 100.0 if is_correct else 0.0
             mastery.mastery_score = round((1 - alpha) * mastery.mastery_score + alpha * target, 1)

@@ -136,6 +136,7 @@ class Question(Base):
     difficulty = Column(String(50), nullable=False) # 'Easy', 'Medium', 'Hard'
     is_verified = Column(Boolean, default=False)
     source_metadata = Column(JSON, nullable=False) # {source_type, document_name, page/slide/timestamp}
+    source_chunk_ids = Column(JSON, nullable=True) # List of chunk IDs supporting this question
     created_at = Column(DateTime, default=datetime.utcnow)
 
     course = relationship("Course", back_populates="questions")

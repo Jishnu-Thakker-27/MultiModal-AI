@@ -25,7 +25,7 @@ def generate_grounded_answer(
     prompt = build_grounded_prompt(query, chunks)
 
     # If OpenAI API Key is present, invoke LLM
-    if settings.OPENAI_API_KEY:
+    if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY.strip():
         try:
             from openai import OpenAI
             client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -46,16 +46,16 @@ def generate_grounded_answer(
     top_chunk = chunks[0]
     loc_str = ""
     if top_chunk['source_type'] == 'pdf':
-        loc_str = f"Page {top_chunk.get('page_number')}"
+        loc_str = f"Page {top_chunk.get('page_number') or 1}"
     elif top_chunk['source_type'] == 'pptx':
-        loc_str = f"Slide {top_chunk.get('slide_number')}"
+        loc_str = f"Slide {top_chunk.get('slide_number') or 1}"
     elif top_chunk['source_type'] == 'video':
-        loc_str = f"Timestamp {top_chunk.get('start_time')}"
+        loc_str = f"Timestamp {top_chunk.get('start_time') or '00:00:00'}"
 
     synthesized_answer = (
         f"Based on course document '{top_chunk['document_title']}' ({loc_str}):\n\n"
         f"{top_chunk['content']}\n\n"
-        f"This material directly addresses your question regarding {query}."
+        f"This material directly addresses your question regarding '{query}'."
     )
 
     return synthesized_answer, citations, True

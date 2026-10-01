@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
 from app.database.models import Base
@@ -11,7 +11,6 @@ engine = None
 try:
     if settings.DATABASE_URL and "postgresql" in settings.DATABASE_URL and not settings.SQLITE_FALLBACK:
         engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
-        # Test connection
         with engine.connect() as conn:
             pass
         logger.info("Connected to PostgreSQL database.")
@@ -28,6 +27,13 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Migrate column source_chunk_ids if missing in SQLite
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE questions ADD COLUMN source_chunk_ids JSON"))
+            conn.commit()
+    except Exception:
+        pass # Column already exists
 
 def get_db():
     db = SessionLocal()

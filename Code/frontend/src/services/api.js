@@ -63,8 +63,11 @@ export const generateAssessment = async (courseId, params) => {
   return response.data;
 };
 
-export const submitAssessment = async (assessmentId, answers) => {
-  const response = await api.post(`/assessments/${assessmentId}/submit`, { answers });
+export const submitAssessment = async (assessmentId, answers, topicId = null) => {
+  const response = await api.post(`/assessments/${assessmentId}/submit`, {
+    answers,
+    topic_id: topicId,
+  });
   return response.data;
 };
 
