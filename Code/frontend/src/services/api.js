@@ -45,6 +45,11 @@ export const processDocument = async (documentId) => {
   return response.data;
 };
 
+export const deleteDocument = async (documentId) => {
+  const response = await api.delete(`/documents/${documentId}`);
+  return response.data;
+};
+
 export const getCourseTopics = async (courseId) => {
   const response = await api.get(`/courses/${courseId}/topics`);
   return response.data;
@@ -55,6 +60,11 @@ export const sendChatMessage = async (courseId, question, conversationId = null)
     question,
     conversation_id: conversationId,
   });
+  return response.data;
+};
+
+export const getChatHistory = async (courseId) => {
+  const response = await api.get(`/courses/${courseId}/chat/history`);
   return response.data;
 };
 

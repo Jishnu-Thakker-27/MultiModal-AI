@@ -132,3 +132,11 @@ def process_document(document_id: str, db: Session = Depends(get_db)):
     except Exception as e:
         repo.update_document_status(document_id, "Failed", str(e))
         raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
+
+@router.delete("/documents/{document_id}")
+def delete_document(document_id: str, db: Session = Depends(get_db)):
+    repo = Repository(db)
+    success = repo.delete_document(document_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"status": "success", "message": "Document and associated knowledge chunks deleted successfully"}

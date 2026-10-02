@@ -53,6 +53,23 @@ class Repository:
             doc.error_message = error_message
             self.db.commit()
 
+    def delete_document(self, document_id: str) -> bool:
+        import os
+        doc = self.db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            return False
+        # Delete associated chunks
+        self.db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).delete()
+        # Delete file from local filesystem if exists
+        if doc.file_path and os.path.exists(doc.file_path):
+            try:
+                os.remove(doc.file_path)
+            except Exception:
+                pass
+        self.db.delete(doc)
+        self.db.commit()
+        return True
+
     # --- Chunks ---
     def add_chunks(self, chunks: List[Dict[str, Any]]):
         chunk_objs = []
@@ -201,3 +218,40 @@ class Repository:
             mastery.mastery_score = round((1 - alpha) * mastery.mastery_score + alpha * target, 1)
         self.db.commit()
         return mastery.mastery_score
+
+    # --- Conversation & Messages Persistence ---
+    def get_or_create_conversation(self, course_id: str, conversation_id: Optional[str] = None, user_id: str = "demo_student") -> Conversation:
+        if conversation_id:
+            conv = self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
+            if conv:
+                return conv
+        conv = self.db.query(Conversation).filter(Conversation.course_id == course_id, Conversation.user_id == user_id).first()
+        if not conv:
+            conv = Conversation(course_id=course_id, user_id=user_id, title="Course Tutor Chat")
+            self.db.add(conv)
+            self.db.commit()
+            self.db.refresh(conv)
+        return conv
+
+    def save_chat_messages(self, conversation_id: str, user_text: str, bot_text: str, citations: List[Dict[str, Any]]):
+        msg_user = Message(conversation_id=conversation_id, sender="user", content=user_text)
+        msg_bot = Message(conversation_id=conversation_id, sender="assistant", content=bot_text, citations=citations)
+        self.db.add(msg_user)
+        self.db.add(msg_bot)
+        self.db.commit()
+
+    def get_conversation_history(self, course_id: str, user_id: str = "demo_student") -> List[Dict[str, Any]]:
+        conv = self.db.query(Conversation).filter(Conversation.course_id == course_id, Conversation.user_id == user_id).first()
+        if not conv:
+            return []
+        msgs = self.db.query(Message).filter(Message.conversation_id == conv.id).order_by(Message.created_at.asc()).all()
+        return [
+            {
+                "id": m.id,
+                "sender": m.sender,
+                "content": m.content,
+                "citations": m.citations or [],
+                "created_at": m.created_at.isoformat() if m.created_at else None
+            }
+            for m in msgs
+        ]

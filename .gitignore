@@ -1,20 +1,23 @@
 # Byte-compiled / optimized / DLL files
-__pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 
 # Databases & local uploads
 *.db
 *.sqlite3
-uploads/
-backend/uploads/
+**/uploads/
+**/backend/uploads/
+.venv/
+**/.venv/
 
 # Node & Frontend dependencies/build
-node_modules/
-dist/
-.vite/
+**/node_modules/
+**/dist/
+**/.vite/
 
 # Environment & IDE
 .env
+**/.env
 .vscode/
 .idea/

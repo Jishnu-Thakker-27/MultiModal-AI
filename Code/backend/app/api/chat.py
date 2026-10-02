@@ -29,12 +29,19 @@ def chat_with_tutor(
     # 3. Generate grounded answer & citations
     answer, citations, is_grounded = generate_grounded_answer(payload.question, reranked_chunks)
 
-    conv_id = payload.conversation_id or "conv_demo_123"
+    # 4. Get/Create DB Conversation & Save History
+    conv = repo.get_or_create_conversation(course_id, payload.conversation_id)
+    repo.save_chat_messages(conv.id, payload.question, answer, citations)
 
     return ChatResponse(
-        conversation_id=conv_id,
+        conversation_id=conv.id,
         question=payload.question,
         answer=answer,
         is_grounded=is_grounded,
         citations=citations
     )
+
+@router.get("/{course_id}/chat/history")
+def get_chat_history(course_id: str, db: Session = Depends(get_db)):
+    repo = Repository(db)
+    return repo.get_conversation_history(course_id)
