@@ -49,11 +49,16 @@ def retrieve_top_chunks(
         if sim >= min_similarity:
             doc = db.query(Document).filter(Document.id == c.document_id).first()
             doc_title = doc.title if doc else "Course Document"
+            file_url = ""
+            if doc and doc.file_path:
+                import os
+                file_url = f"/uploads/{c.course_id}/{os.path.basename(doc.file_path)}"
 
             scored_chunks.append({
                 "chunk_id": c.id,
                 "document_title": doc_title,
                 "source_type": c.source_type,
+                "file_url": file_url,
                 "content": c.content,
                 "page_number": c.page_number,
                 "slide_number": c.slide_number,

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { sendChatMessage, getChatHistory } from '../services/api';
 import { Send, Bot, User, FileText, Presentation, Video, ExternalLink, RefreshCw } from 'lucide-react';
+import SourceViewerModal from '../components/common/SourceViewerModal';
 
 function TypewriterText({ text, animate = false, speed = 15 }) {
   const [displayedText, setDisplayedText] = useState(animate ? '' : text);
@@ -47,6 +48,7 @@ export default function TutorPage({ selectedCourse }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState(null);
+  const [selectedCitation, setSelectedCitation] = useState(null);
 
   // Load chat retention history whenever active course changes
   useEffect(() => {
@@ -147,9 +149,10 @@ export default function TutorPage({ selectedCourse }) {
 
     return (
       <div
-        key={cite.document_title + label}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700/80 text-[11px] text-slate-300 font-medium hover:border-indigo-500 transition cursor-pointer"
-        title={`Excerpt: ${cite.excerpt || 'Source snippet'}`}
+        key={cite.document_title + label + (cite.start_time || cite.page || cite.slide)}
+        onClick={() => setSelectedCitation(cite)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700/80 text-[11px] text-slate-300 font-medium hover:border-indigo-500 hover:scale-105 transition cursor-pointer shadow-xs"
+        title={`Click to open viewer & jump to source snippet`}
       >
         {icon}
         <span>{cite.document_title}</span>
@@ -252,6 +255,14 @@ export default function TutorPage({ selectedCourse }) {
           <Send className="w-4 h-4" />
         </button>
       </form>
+
+      {/* Source Viewer & Video Timestamp Jump Modal */}
+      {selectedCitation && (
+        <SourceViewerModal
+          citation={selectedCitation}
+          onClose={() => setSelectedCitation(null)}
+        />
+      )}
     </div>
   );
 }

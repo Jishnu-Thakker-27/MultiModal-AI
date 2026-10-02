@@ -24,7 +24,8 @@ def extract_citations_from_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str
                 "slide": slide,
                 "start_time": start_time,
                 "end_time": c.get("end_time"),
-                "excerpt": c.get("content", "")[:150]
+                "file_url": c.get("file_url", ""),
+                "excerpt": c.get("content", "")[:250]
             })
 
     return citations

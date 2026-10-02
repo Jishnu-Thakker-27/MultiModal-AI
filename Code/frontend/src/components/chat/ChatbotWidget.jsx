@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { sendChatMessage } from '../../services/api';
 import { Send, Bot, User, FileText, Presentation, Video, Sparkles } from 'lucide-react';
 
+import SourceViewerModal from '../common/SourceViewerModal';
+
 export default function ChatbotWidget({ selectedCourse, height = "h-96" }) {
   const navigate = useNavigate();
   const [messages, setMessages] = useState([
@@ -17,6 +19,7 @@ export default function ChatbotWidget({ selectedCourse, height = "h-96" }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState(null);
+  const [selectedCitation, setSelectedCitation] = useState(null);
 
   useEffect(() => {
     setConversationId(null);
@@ -48,8 +51,9 @@ export default function ChatbotWidget({ selectedCourse, height = "h-96" }) {
     return (
       <div
         key={cite.document_title + label + idx}
-        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-950 border border-slate-700/80 text-[10px] text-slate-300 font-medium"
-        title={`Excerpt: ${cite.excerpt || 'Source snippet'}`}
+        onClick={() => setSelectedCitation(cite)}
+        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-950 border border-slate-700/80 text-[10px] text-slate-300 font-medium hover:border-indigo-500 hover:scale-105 transition cursor-pointer shadow-xs"
+        title={`Click to open viewer & jump to source snippet`}
       >
         {icon}
         <span className="truncate max-w-[120px]">{cite.document_title}</span>
@@ -145,6 +149,14 @@ export default function ChatbotWidget({ selectedCourse, height = "h-96" }) {
           <Send className="w-3.5 h-3.5" />
         </button>
       </form>
+
+      {/* Source Viewer & Video Timestamp Jump Modal */}
+      {selectedCitation && (
+        <SourceViewerModal
+          citation={selectedCitation}
+          onClose={() => setSelectedCitation(null)}
+        />
+      )}
     </div>
   );
 }

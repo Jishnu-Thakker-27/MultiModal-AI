@@ -32,6 +32,14 @@ def on_startup():
     init_db()
     logger.info("Database initialized successfully.")
 
+import os
+from fastapi.staticfiles import StaticFiles
+
+if not os.path.exists(settings.UPLOAD_DIR):
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+
 @app.get("/")
 def root():
     return {
