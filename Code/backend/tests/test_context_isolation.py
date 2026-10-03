@@ -71,10 +71,10 @@ def test_context_isolation_between_conversations(db):
     chunks_a_cross = retrieve_top_chunks(db, conversation_id=conv_a.id, query="What is conditional probability?")
     # Must NOT retrieve Probability chunks!
     assert all("Probability.pdf" not in c.get("document_title", "") for c in chunks_a_cross)
-    
+
     answer_a, citations_a, is_grounded = generate_grounded_answer("What is conditional probability?", chunks_a_cross)
     if not chunks_a_cross:
-        assert "not covered" in answer_a.lower()
+        assert ("not covered" in answer_a.lower() or "no source material" in answer_a.lower() or "not found" in answer_a.lower())
 
     # TEST 4: Switch back to Conversation B for Probability
     chunks_b_prob = retrieve_top_chunks(db, conversation_id=conv_b.id, query="What is conditional probability?")

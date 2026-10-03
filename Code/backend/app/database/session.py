@@ -28,6 +28,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     Base.metadata.create_all(bind=engine)
     # Migrate columns if missing in SQLite
+<<<<<<< HEAD
     try:
         with engine.connect() as conn:
             conn.execute(text("ALTER TABLE questions ADD COLUMN source_chunk_ids JSON"))
@@ -38,6 +39,16 @@ def init_db():
         "ALTER TABLE conversations ADD COLUMN topic_name VARCHAR(255)",
         "ALTER TABLE conversations ADD COLUMN status VARCHAR(50) DEFAULT 'active'",
         "ALTER TABLE conversations ADD COLUMN updated_at DATETIME"
+=======
+    for stmt in [
+        "ALTER TABLE questions ADD COLUMN source_chunk_ids JSON",
+        "ALTER TABLE conversations ADD COLUMN user_id VARCHAR(255)",
+        "ALTER TABLE conversations ADD COLUMN course_id VARCHAR(255)",
+        "ALTER TABLE conversations ADD COLUMN topic_name VARCHAR(255)",
+        "ALTER TABLE conversations ADD COLUMN status VARCHAR(50) DEFAULT 'active'",
+        "ALTER TABLE conversations ADD COLUMN updated_at DATETIME",
+        "ALTER TABLE document_chunks ADD COLUMN concept_node_id VARCHAR(36)"
+>>>>>>> e8ea7514b1aad5ba77a083dbd4cf1d22d83f0a0e
     ]:
         try:
             with engine.connect() as conn:

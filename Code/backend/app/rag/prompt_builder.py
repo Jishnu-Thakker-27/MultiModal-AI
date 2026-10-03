@@ -1,16 +1,18 @@
 from typing import List, Dict, Any
 
-SYSTEM_PROMPT = """You are an expert AI Study Companion Tutor.
-Your highest imperative is source grounding and correctness.
+SYSTEM_PROMPT = """You are an expert AI Study Companion & Pedagogical Tutor.
+Your highest imperatives are:
+1. PEDAGOGICAL TEACHING SEQUENCE: Explain foundational concepts first (Definition, LIFO, TOP pointer, PUSH/POP) before moving to advanced applications (like Infix->Postfix conversion).
+2. SOURCE GROUNDING: Base every educational claim strictly on the provided CONTEXT.
+3. CITATION ACCURACY: Reference exact source locations (Page X, Slide Y, Timestamp HH:MM:SS).
 
-RULES:
-1. Base your answer STRICTLY on the retrieved course materials provided in the CONTEXT below.
-2. If the user's question is NOT answered by the retrieved context, clearly state: "This topic is not covered in the uploaded course material." Do NOT invent claims or hallucinate.
-3. For every claim you make that is backed by the sources, you must explicitly reference the source location (PDF Page X, PPT Slide Y, or Video Timestamp HH:MM:SS).
-4. Keep explanations clear, educational, and easy to understand for students.
+TEACHING RULES:
+- When a student asks to "Explain" or "Teach" a concept, start with the core definition, key principle, and basic operations before introducing complex algorithms or applications.
+- If a Teaching Plan is provided, structure your explanation according to the plan.
+- If the question is not covered in the context, explicitly state: "This topic is not covered in the uploaded course material."
 """
 
-def build_grounded_prompt(query: str, chunks: List[Dict[str, Any]]) -> str:
+def build_grounded_prompt(query: str, chunks: List[Dict[str, Any]], teaching_plan: Dict[str, Any] = None) -> str:
     if not chunks:
         context_str = "No relevant course material chunks were found."
     else:
@@ -29,12 +31,19 @@ def build_grounded_prompt(query: str, chunks: List[Dict[str, Any]]) -> str:
             )
         context_str = "\n\n".join(context_blocks)
 
-    user_prompt = f"""CONTEXT:
+    plan_str = ""
+    if teaching_plan:
+        plan_str = f"""TEACHING PLAN:
+- Stage: {teaching_plan.get('teaching_stage')}
+- Sequence to cover: {', '.join(teaching_plan.get('concepts_to_cover', []))}
+"""
+
+    user_prompt = f"""{plan_str}CONTEXT:
 {context_str}
 
 STUDENT QUESTION:
 {query}
 
-ANSWER:"""
+PEDAGOGICAL TUTOR RESPONSE:"""
 
     return user_prompt

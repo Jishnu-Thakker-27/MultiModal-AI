@@ -145,4 +145,9 @@ export const runEvaluation = async () => {
   return response.data;
 };
 
+export const getCourseConceptMap = async (courseId) => {
+  const response = await api.get(`/courses/${courseId}/concept-map`);
+  return response.data;
+};
+
 export default api;

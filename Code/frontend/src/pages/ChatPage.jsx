@@ -48,6 +48,8 @@ export default function ChatPage({
   const [isUploading, setIsUploading] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [showSourcesModal, setShowSourcesModal] = useState(false);
+  const [showConceptMapModal, setShowConceptMapModal] = useState(false);
+  const [conceptMapData, setConceptMapData] = useState([]);
   
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -205,8 +207,28 @@ export default function ChatPage({
           </div>
         </div>
 
-        {/* Source Context Indicator */}
-        <div className="flex items-center gap-3">
+        {/* Source Context & Concept Map Indicator */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={async () => {
+              if (currentConversation?.course_id) {
+                try {
+                  const { getCourseConceptMap } = await import('../services/api');
+                  const mapData = await getCourseConceptMap(currentConversation.course_id);
+                  setConceptMapData(mapData || []);
+                } catch (e) {
+                  console.error(e);
+                }
+              }
+              setShowConceptMapModal(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#E6F4F1] border border-[#70C1B3]/40 text-xs font-bold text-[#399283] hover:bg-[#D3EFEA] transition cursor-pointer shadow-2xs"
+            title="View Course Concept Taxonomy & Prerequisite Map"
+          >
+            <Brain className="w-3.5 h-3.5 text-[#399283]" />
+            <span className="hidden md:inline">Concept Map</span>
+          </button>
+
           <button
             onClick={() => setShowSourcesModal(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#FFFDF9] border border-[#E2D9CC] text-xs font-semibold text-[#4A5568] hover:bg-[#F0EAE1] hover:border-[#70C1B3]/50 transition shadow-2xs cursor-pointer"
@@ -519,6 +541,85 @@ export default function ChatPage({
                 className="px-4 py-2 rounded-xl bg-[#F0EAE1] hover:bg-[#E2D9CC] text-xs font-bold text-[#2D3748]"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Concept Map Modal */}
+      {showConceptMapModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="pastel-card w-full max-w-2xl p-6 space-y-4 animate-fade-in bg-[#FFFDF9] max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-[#E2D9CC] pb-3 shrink-0">
+              <div className="flex items-center gap-2">
+                <Brain className="w-5 h-5 text-[#399283]" />
+                <h3 className="font-bold text-base text-[#2D3748]">Course Concept Taxonomy & Prerequisite Map</h3>
+              </div>
+              <button
+                onClick={() => setShowConceptMapModal(false)}
+                className="p-1 rounded-lg hover:bg-[#F0EAE1] text-[#718096]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {conceptMapData.length === 0 ? (
+                <div className="py-8 text-center space-y-3 text-[#718096]">
+                  <Sparkles className="w-8 h-8 text-[#399283] mx-auto" />
+                  <p className="text-sm font-semibold">No concept graph generated for this course yet.</p>
+                  <p className="text-xs text-[#A0AEC0]">Upload a textbook or lecture slides to automatically build the educational concept map.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {conceptMapData.map((node) => (
+                    <div
+                      key={node.id}
+                      className="p-4 rounded-xl bg-[#F0EAE1]/60 border border-[#E2D9CC] space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                            node.concept_type === 'definition' ? 'bg-[#E6F4F1] text-[#399283]' : node.concept_type === 'operation' ? 'bg-[#FDF1EA] text-[#F2A679]' : 'bg-[#EBF3FA] text-[#7EB0D5]'
+                          }`}>
+                            {node.concept_type}
+                          </span>
+                          <h4 className="text-xs font-bold text-[#2D3748]">{node.name}</h4>
+                        </div>
+                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                          node.mastery_score >= 70 ? 'bg-[#E6F4F1] text-[#399283]' : 'bg-[#FDF1EA] text-[#F2A679]'
+                        }`}>
+                          {node.mastery_score}% Mastery
+                        </span>
+                      </div>
+
+                      {node.description && (
+                        <p className="text-xs text-[#718096] italic leading-relaxed">{node.description}</p>
+                      )}
+
+                      {node.prerequisites && node.prerequisites.length > 0 && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-[#718096] font-semibold pt-1">
+                          <span>Requires Prerequisite:</span>
+                          {node.prerequisites.map((p, idx) => (
+                            <span key={idx} className="px-2 py-0.5 rounded bg-[#FFFDF9] border border-[#E2D9CC] text-[#2D3748]">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-end shrink-0 border-t border-[#E2D9CC]">
+              <button
+                onClick={() => setShowConceptMapModal(false)}
+                className="px-4 py-2 rounded-xl bg-[#F0EAE1] hover:bg-[#E2D9CC] text-xs font-bold text-[#2D3748]"
+              >
+                Close Map
               </button>
             </div>
           </div>
