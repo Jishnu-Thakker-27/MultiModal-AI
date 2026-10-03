@@ -50,12 +50,27 @@ def verify_question(q: Dict[str, Any], requested_topic: str) -> bool:
     # 4. MCQ Options verification
     q_type = q.get("question_type", "MCQ")
     if q_type == "MCQ":
-        options = q.get("options", [])
-        if not options or len(options) < 2:
-            logger.warning(f"MCQ validation failed for '{q_text[:30]}': fewer than 2 options.")
+        raw_options = q.get("options", [])
+        if not raw_options or not isinstance(raw_options, list):
+            logger.warning(f"MCQ validation failed for '{q_text[:30]}': invalid options format.")
             return False
-        if correct_ans not in options:
-            options[0] = correct_ans # Ensure correct answer is present in options list
+
+        # Deduplicate option strings while preserving order
+        unique_options = []
+        for opt in raw_options:
+            opt_str = str(opt).strip()
+            if opt_str and opt_str not in unique_options:
+                unique_options.append(opt_str)
+
+        if len(unique_options) < 2:
+            logger.warning(f"MCQ validation failed for '{q_text[:30]}': fewer than 2 distinct options.")
+            return False
+
+        # Ensure correct_answer is present in options list
+        if correct_ans not in unique_options:
+            unique_options[0] = correct_ans
+
+        q["options"] = unique_options
 
     logger.info(f"Verified question for topic '{requested_topic}': '{q_text[:40]}...' [ACCEPTED]")
     return True

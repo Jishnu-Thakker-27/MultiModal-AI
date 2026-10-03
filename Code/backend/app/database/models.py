@@ -72,6 +72,11 @@ class DocumentChunk(Base):
     concept = Column(String(255), nullable=True)
     concept_node_id = Column(String(36), ForeignKey("concept_graph_nodes.id", ondelete="SET NULL"), nullable=True)
     
+    heading = Column(String(255), nullable=True)
+    section = Column(String(255), nullable=True)
+    page_end = Column(Integer, nullable=True)
+    page_type = Column(String(50), nullable=True, default="TEXT") # 'TEXT', 'VISUAL_MATHEMATICAL', 'SCANNED', 'COVER_METADATA'
+    
     # Store embedding as JSON list of floats for maximum compatibility (SQLite & PostgreSQL)
     embedding = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

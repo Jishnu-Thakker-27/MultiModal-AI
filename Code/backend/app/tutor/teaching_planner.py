@@ -6,8 +6,10 @@ logger = logging.getLogger("study_companion.tutor.teaching_planner")
 class TeachingPlanner:
     """
     Generalized Topic-Agnostic Teaching Planner.
-    Constructs an explicit pedagogical plan centered around the user's explicit TARGET CONCEPT.
-    Ensures target concept remains dominant throughout the lesson.
+    Constructs an explicit pedagogical plan based on the 3-state target coverage model:
+    - STATE_A_NOT_FOUND: Topic not in course material.
+    - STATE_B_PARTIAL_INFO: Subtopics/operations exist, but no standalone definition.
+    - STATE_C_SUFFICIENT_INFO: Complete source coverage available.
     """
     def create_plan(
         self,
@@ -19,6 +21,7 @@ class TeachingPlanner:
         intent = intent_info.get("intent", "EXPLAIN_CONCEPT")
         target_name = pedagogical_context.get("target_name") or "the requested concept"
         target_node = pedagogical_context.get("target_concept")
+        coverage_state = pedagogical_context.get("target_coverage_state", "STATE_C_SUFFICIENT_INFO")
         missing_prereqs = pedagogical_context.get("missing_prerequisites", [])
         needs_bridge = pedagogical_context.get("needs_prereq_bridge", False)
         is_intro = pedagogical_context.get("is_introductory_request", False)
@@ -27,9 +30,17 @@ class TeachingPlanner:
         teaching_stage = "DIRECT_EXPLANATION"
         concepts_to_cover = []
 
-        if not target_found:
+        if coverage_state == "STATE_A_NOT_FOUND" or not target_found:
             teaching_stage = "NOT_FOUND"
             concepts_to_cover = [f"Notification: '{target_name}' is not in course material"]
+
+        elif coverage_state == "STATE_B_PARTIAL_INFO":
+            teaching_stage = "PARTIAL_INFO"
+            concepts_to_cover = [
+                f"1. Context Notice: Uploaded material covers specific subtopics/operations for {target_name}, but lacks a full introductory definition.",
+                f"2. Explanation of available subtopic content from course material"
+            ]
+
         elif is_intro or intent in ["LEARN_CONCEPT", "DEFINITION"]:
             teaching_stage = "FOUNDATIONS_FIRST"
             c_type = target_node.concept_type if target_node else "concept"
@@ -70,6 +81,7 @@ class TeachingPlanner:
             "intent": intent,
             "target_name": target_name,
             "target_found": target_found,
+            "coverage_state": coverage_state,
             "teaching_stage": teaching_stage,
             "concepts_to_cover": concepts_to_cover,
             "retrieved_chunks": retrieved_chunks,

@@ -1,7 +1,7 @@
 import os
 import shutil
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.database.repositories import Repository
@@ -92,7 +92,8 @@ def create_conversation(
             course_id=conv.course_id or "default_course",
             user_id=user_id,
             query=question,
-            intent=intent_info["intent"]
+            intent=intent_info["intent"],
+            conversation_id=conv.id
         )
         retrieved_chunks = retrieve_hierarchical_chunks(
             db=db,
@@ -101,7 +102,9 @@ def create_conversation(
             conversation_id=conv.id,
             course_id=conv.course_id,
             intent=intent_info["intent"],
+            query_scope=intent_info.get("query_scope", "FOCUSED"),
             target_concept=pedagogical_context.get("target_concept"),
+
             prerequisite_nodes=pedagogical_context.get("prerequisites"),
             is_introductory=pedagogical_context.get("is_introductory_request", True),
             top_k=5
@@ -206,6 +209,7 @@ def delete_conversation(
 def chat_in_conversation(
     conversation_id: str,
     payload: ChatRequest,
+    debug: bool = Query(False, description="Enable RAG Debug Metadata"),
     db: Session = Depends(get_db)
 ):
     repo = Repository(db)
@@ -220,18 +224,18 @@ def chat_in_conversation(
         new_title = question[:35] + ("..." if len(question) > 35 else "")
         repo.update_conversation(conversation_id, title=new_title)
 
-    # Fetch conversation history for follow-up query context resolution
     messages = repo.get_conversation_messages(conversation_id)
 
     # 1. Intent Classification
     intent_info = classify_learning_intent(question)
 
-    # 2. Generalized Target & Prerequisite Resolution
+    # 2. Generalized Target & 3-State Coverage Resolution (Strictly scoped to this conversation's attached sources!)
     pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
         course_id=conv.course_id or "default_course",
         user_id=user_id,
         query=question,
         intent=intent_info["intent"],
+        conversation_id=conversation_id,
         conversation_history=messages
     )
 
@@ -243,11 +247,13 @@ def chat_in_conversation(
         conversation_id=conversation_id,
         course_id=conv.course_id,
         intent=intent_info["intent"],
+        query_scope=intent_info.get("query_scope", "FOCUSED"),
         target_concept=pedagogical_context.get("target_concept"),
         prerequisite_nodes=pedagogical_context.get("prerequisites"),
         is_introductory=pedagogical_context.get("is_introductory_request", True),
         top_k=5
     )
+
 
     # 4. Generalized Teaching Planner
     teaching_plan = TeachingPlanner().create_plan(
@@ -257,7 +263,7 @@ def chat_in_conversation(
         retrieved_chunks=retrieved_chunks
     )
 
-    # 5. Grounded Tutor Response Generation
+    # 5. Grounded Tutor Response Generation (3-State Model)
     raw_answer, citations, is_grounded = generate_grounded_answer(question, retrieved_chunks, teaching_plan)
 
     # 6. Final Answer Validation
@@ -271,12 +277,32 @@ def chat_in_conversation(
     if target_node:
         GraphManager(db).update_student_concept_mastery(user_id, target_node.id, delta=0.2)
 
+    debug_info = None
+    if debug:
+        debug_info = {
+            "query": question,
+            "intent": intent_info,
+            "target_name": pedagogical_context.get("target_name"),
+            "target_coverage_state": pedagogical_context.get("target_coverage_state"),
+            "teaching_stage": teaching_plan.get("teaching_stage"),
+            "retrieved_chunks_count": len(retrieved_chunks),
+            "chunks_summary": [
+                {
+                    "chunk_id": c.get("chunk_id"),
+                    "page": c.get("page_number"),
+                    "category": c.get("relevance_category"),
+                    "score": c.get("final_score")
+                } for c in retrieved_chunks
+            ]
+        }
+
     return ChatResponse(
         conversation_id=conversation_id,
         question=question,
         answer=answer,
         is_grounded=is_grounded,
-        citations=citations
+        citations=citations,
+        debug_info=debug_info
     )
 
 @router.post("/{conversation_id}/documents/{document_id}")

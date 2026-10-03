@@ -16,7 +16,8 @@ import {
   Video,
   FileCheck,
   Brain,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { 
   postConversationChat, 
@@ -46,6 +47,7 @@ export default function ChatPage({
   const [inputQuery, setInputQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgressMsg, setUploadProgressMsg] = useState('');
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [showSourcesModal, setShowSourcesModal] = useState(false);
   const [showConceptMapModal, setShowConceptMapModal] = useState(false);
@@ -68,16 +70,30 @@ export default function ChatPage({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading]);
+  }, [messages, isLoading, isUploading]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const deduplicateMessages = (msgList) => {
+    const seenIds = new Set();
+    const seenContent = new Set();
+    return msgList.filter(msg => {
+      if (msg.id && seenIds.has(msg.id)) return false;
+      if (msg.id) seenIds.add(msg.id);
+      
+      const contentKey = `${msg.role}:${(msg.content || '').trim()}`;
+      if (seenContent.has(contentKey)) return false;
+      seenContent.add(contentKey);
+      return true;
+    });
+  };
+
   const loadDetails = async (id) => {
     try {
       const details = await getConversationDetails(id);
-      setMessages(details.messages || []);
+      setMessages(deduplicateMessages(details.messages || []));
       setSources(details.sources || []);
       setTopicName(details.topic_name || '');
       setTitle(details.title || 'Learning Session');
@@ -87,8 +103,15 @@ export default function ChatPage({
   };
 
   const handleSend = async (customText = null) => {
-    const query = customText || inputQuery;
-    if (!query.trim() && attachedFiles.length === 0) return;
+    const rawQuery = customText || inputQuery;
+    let query = rawQuery.trim();
+    
+    // If no query text provided but files attached, default query to document summary
+    if (!query && attachedFiles.length > 0) {
+      query = "Summarize the key concepts and topics covered in this uploaded material.";
+    }
+
+    if (!query && attachedFiles.length === 0) return;
 
     let activeConvId = currentConversation?.id;
     
@@ -97,64 +120,60 @@ export default function ChatPage({
     try {
       // 1. If no conversation exists yet, create one first!
       if (!activeConvId) {
+        const firstFileName = attachedFiles.length > 0 ? attachedFiles[0].name : query;
         const newConv = await createConversation({
-          title: query.slice(0, 35) + (query.length > 35 ? '...' : ''),
+          title: firstFileName.slice(0, 35) + (firstFileName.length > 35 ? '...' : ''),
           topic_name: 'General'
         });
         activeConvId = newConv.id;
-        onSelectConversation(newConv);
+        if (onSelectConversation) onSelectConversation(newConv);
       }
 
       // 2. Upload any pending attached files first
       if (attachedFiles.length > 0) {
         setIsUploading(true);
+        setUploadProgressMsg('Indexing uploaded PDF/document pages and generating vector embeddings...');
         for (const file of attachedFiles) {
           await uploadSourceToConversation(activeConvId, file);
         }
         setAttachedFiles([]);
         setIsUploading(false);
+        setUploadProgressMsg('');
       }
 
       // 3. Add optimistic user message to local stream
+      const tempUserMsgId = `temp-user-${Date.now()}`;
       const userMsg = {
-        id: `user-${Date.now()}`,
+        id: tempUserMsgId,
         role: 'user',
         content: query,
         created_at: new Date().toISOString()
       };
-      setMessages(prev => [...prev, userMsg]);
+      setMessages(prev => deduplicateMessages([...prev, userMsg]));
       setInputQuery('');
 
       // 4. Send chat to API (isolated strictly to activeConvId scope)
-      const res = await postConversationChat(activeConvId, query);
+      await postConversationChat(activeConvId, query);
       
-      const aiMsg = {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: res.answer,
-        citations: res.citations || [],
-        created_at: new Date().toISOString()
-      };
-
-      setMessages(prev => [...prev, aiMsg]);
-      
-      // Refresh sources and details
-      loadDetails(activeConvId);
+      // 5. Fetch canonical DB message list directly from backend
+      await loadDetails(activeConvId);
       if (onConversationUpdated) onConversationUpdated();
     } catch (err) {
       console.error("Failed to send chat", err);
-      setMessages(prev => [
+      setMessages(prev => deduplicateMessages([
         ...prev,
         {
           id: `err-${Date.now()}`,
           role: 'assistant',
-          content: "Sorry, I encountered an error retrieving answers. Please ensure your backend is active.",
+          content: "Sorry, I encountered an error retrieving answers. Please ensure your backend server is active.",
           citations: [],
           created_at: new Date().toISOString()
         }
-      ]);
+      ]));
     } finally {
       setIsLoading(false);
+      setIsUploading(false);
+      setUploadProgressMsg('');
     }
   };
 
@@ -162,23 +181,44 @@ export default function ChatPage({
     const files = Array.from(e.target.files);
     if (!files.length) return;
 
-    if (currentConversation?.id) {
-      setIsUploading(true);
-      try {
-        for (const f of files) {
-          await uploadSourceToConversation(currentConversation.id, f);
-        }
-        await loadDetails(currentConversation.id);
-        if (onConversationUpdated) onConversationUpdated();
-      } catch (err) {
-        console.error("Failed to upload source", err);
-      } finally {
-        setIsUploading(false);
+    setIsUploading(true);
+    setUploadProgressMsg(`Processing and chunking ${files[0].name}...`);
+
+    try {
+      let activeConvId = currentConversation?.id;
+
+      // If no active session, create a new session automatically for the uploaded file
+      if (!activeConvId) {
+        const newConv = await createConversation({
+          title: files[0].name.slice(0, 35) + (files[0].name.length > 35 ? '...' : ''),
+          topic_name: 'General'
+        });
+        activeConvId = newConv.id;
+        if (onSelectConversation) onSelectConversation(newConv);
       }
-    } else {
-      setAttachedFiles(prev => [...prev, ...files]);
+
+      for (const f of files) {
+        setUploadProgressMsg(`Extracting text, tables & math from ${f.name}...`);
+        await uploadSourceToConversation(activeConvId, f);
+      }
+
+      await loadDetails(activeConvId);
+      if (onConversationUpdated) onConversationUpdated();
+
+      // Trigger automatic initial summary explanation query
+      setIsLoading(true);
+      await postConversationChat(activeConvId, "Provide a overview of the main topics and key concepts in this uploaded document.");
+      await loadDetails(activeConvId);
+
+    } catch (err) {
+      console.error("Failed to upload source", err);
+      alert(`Upload failed: ${err.response?.data?.detail || err.message}`);
+    } finally {
+      setIsUploading(false);
+      setIsLoading(false);
+      setUploadProgressMsg('');
+      e.target.value = null;
     }
-    e.target.value = null;
   };
 
   const removePendingFile = (idx) => {
@@ -240,7 +280,8 @@ export default function ChatPage({
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#48A999] hover:bg-[#399283] text-white text-xs font-bold transition shadow-xs cursor-pointer"
+            disabled={isUploading}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#48A999] hover:bg-[#399283] text-white text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
           >
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Add Source</span>
@@ -250,7 +291,7 @@ export default function ChatPage({
 
       {/* Main Conversation Area */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-6">
-        {messages.length === 0 ? (
+        {messages.length === 0 && !isUploading ? (
           /* Welcome Empty State */
           <div className="max-w-3xl mx-auto py-12 flex flex-col items-center text-center space-y-8 animate-fade-in">
             
@@ -284,7 +325,8 @@ export default function ChatPage({
               
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[#48A999] hover:bg-[#399283] text-white text-xs font-bold transition shadow-xs shrink-0 cursor-pointer"
+                disabled={isUploading}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[#48A999] hover:bg-[#399283] text-white text-xs font-bold transition shadow-xs shrink-0 cursor-pointer disabled:opacity-50"
               >
                 Upload Source
               </button>
@@ -374,14 +416,26 @@ export default function ChatPage({
               </div>
             ))}
 
-            {isLoading && (
+            {isUploading && (
+              <div className="flex gap-4 items-center animate-pulse">
+                <div className="w-8 h-8 rounded-xl bg-[#FDF1EA] border border-[#F2A679]/40 flex items-center justify-center text-[#F2A679]">
+                  <UploadCloud className="w-4 h-4 animate-bounce" />
+                </div>
+                <div className="p-4 rounded-2xl bg-[#FFFDF9] border border-[#E2D9CC] text-xs text-[#2D3748] font-semibold flex items-center gap-3">
+                  <Loader2 className="w-4 h-4 text-[#399283] animate-spin" />
+                  <span>{uploadProgressMsg || 'Uploading and processing document...'}</span>
+                </div>
+              </div>
+            )}
+
+            {isLoading && !isUploading && (
               <div className="flex gap-4 items-center animate-pulse">
                 <div className="w-8 h-8 rounded-xl bg-[#E6F4F1] border border-[#70C1B3]/30 flex items-center justify-center text-[#399283]">
                   <Brain className="w-4 h-4" />
                 </div>
                 <div className="p-4 rounded-2xl bg-[#FFFDF9] border border-[#E2D9CC] text-xs text-[#718096] font-semibold flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-[#399283] animate-ping" />
-                  Analyzing conversation sources & generating answer...
+                  Analyzing document sources & generating grounded response...
                 </div>
               </div>
             )}
@@ -433,7 +487,7 @@ export default function ChatPage({
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="p-2.5 rounded-xl bg-[#F0EAE1] hover:bg-[#E2D9CC] text-[#4A5568] transition cursor-pointer shrink-0"
+              className="p-2.5 rounded-xl bg-[#F0EAE1] hover:bg-[#E2D9CC] text-[#4A5568] transition cursor-pointer shrink-0 disabled:opacity-50"
               title="Attach study material (PDF, PPTX, Video)"
             >
               <Paperclip className="w-4 h-4 text-[#399283]" />
@@ -450,16 +504,16 @@ export default function ChatPage({
                   handleSend();
                 }
               }}
-              placeholder="Ask anything about your study material..."
+              placeholder="Ask anything about your uploaded study material..."
               className="flex-1 bg-transparent border-0 text-sm text-[#2D3748] placeholder-[#A0AEC0] focus:ring-0 focus:outline-none resize-none py-2 px-1 max-h-32"
             />
 
             {/* Send Action Button */}
             <button
               onClick={() => handleSend()}
-              disabled={isLoading || (!inputQuery.trim() && attachedFiles.length === 0)}
+              disabled={isLoading || isUploading || (!inputQuery.trim() && attachedFiles.length === 0)}
               className={`p-3 rounded-xl font-bold transition flex items-center justify-center shrink-0 cursor-pointer ${
-                inputQuery.trim() || attachedFiles.length > 0
+                (inputQuery.trim() || attachedFiles.length > 0) && !isLoading && !isUploading
                   ? 'bg-[#48A999] hover:bg-[#399283] text-white shadow-xs'
                   : 'bg-[#E2D9CC] text-[#A0AEC0] cursor-not-allowed'
               }`}

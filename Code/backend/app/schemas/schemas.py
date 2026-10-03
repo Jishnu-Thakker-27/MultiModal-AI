@@ -139,6 +139,7 @@ class ChatResponse(BaseModel):
     answer: str
     is_grounded: bool
     citations: List[CitationSchema] = []
+    debug_info: Optional[Dict[str, Any]] = None
 
 # --- Question & Assessment Schemas ---
 class QuestionGenRequest(BaseModel):
