@@ -16,6 +16,68 @@ class CourseResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# --- Conversation Schemas ---
+class ConversationMessageResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    created_at: datetime
+    citations: Optional[List[Dict[str, Any]]] = []
+
+    class Config:
+        from_attributes = True
+
+class ConversationSourceResponse(BaseModel):
+    id: str
+    document_id: str
+    title: str
+    source_type: str
+    file_path: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ConversationCreate(BaseModel):
+    title: Optional[str] = None
+    course_id: Optional[str] = "default_course"
+    topic_name: Optional[str] = None
+    initial_question: Optional[str] = None
+    document_ids: Optional[List[str]] = []
+
+class ConversationResponse(BaseModel):
+    id: str
+    title: str
+    course_id: Optional[str] = None
+    topic_name: Optional[str] = None
+    status: str
+    message_count: int = 0
+    last_message_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    sources_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+class ConversationDetailResponse(BaseModel):
+    id: str
+    title: str
+    course_id: Optional[str] = None
+    topic_name: Optional[str] = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    sources: List[ConversationSourceResponse] = []
+    messages: List[ConversationMessageResponse] = []
+
+    class Config:
+        from_attributes = True
+
+class ConversationUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    topic_name: Optional[str] = None
+
 # --- Document Schemas ---
 class DocumentResponse(BaseModel):
     id: str
@@ -82,6 +144,7 @@ class ChatResponse(BaseModel):
 class QuestionGenRequest(BaseModel):
     topic_id: Optional[str] = None
     topic_name: Optional[str] = None
+    conversation_id: Optional[str] = None
     difficulty: str = Field("Medium", example="Medium") # Easy, Medium, Hard
     question_count: int = Field(5, ge=1, le=20)
     question_type: str = Field("MCQ", example="MCQ") # MCQ, Short Answer, Numerical

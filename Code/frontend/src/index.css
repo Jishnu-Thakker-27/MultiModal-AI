@@ -2,17 +2,32 @@
 
 @layer base {
   :root {
+    --bg-main: #F7F3ED;
+    --surface-main: #FFFDF9;
+    --surface-card: #FFFFFF;
+    --surface-secondary: #F0EAE1;
+    --primary-mint: #48A999;
+    --primary-mint-hover: #399283;
+    --primary-mint-light: #E6F4F1;
+    --accent-sky: #7EB0D5;
+    --accent-sky-light: #EBF3FA;
+    --accent-peach: #F2A679;
+    --accent-peach-light: #FDF1EA;
+    --accent-pink: #ED8B9E;
+    --text-main: #2D3748;
+    --text-muted: #718096;
+    --border-subtle: #E2D9CC;
     --font-heading: 'Outfit', sans-serif;
     --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   }
 
   body {
-    background-color: #0b0f19;
+    background-color: var(--bg-main);
     background-image: 
-      radial-gradient(at 15% 15%, rgba(99, 102, 241, 0.08) 0px, transparent 40%),
-      radial-gradient(at 85% 20%, rgba(168, 85, 247, 0.06) 0px, transparent 40%),
-      radial-gradient(at 50% 80%, rgba(14, 165, 233, 0.05) 0px, transparent 50%);
-    color: #f1f5f9;
+      radial-gradient(at 10% 10%, rgba(72, 169, 153, 0.06) 0px, transparent 40%),
+      radial-gradient(at 90% 15%, rgba(242, 166, 121, 0.07) 0px, transparent 45%),
+      radial-gradient(at 50% 90%, rgba(126, 176, 213, 0.05) 0px, transparent 50%);
+    color: var(--text-main);
     font-family: var(--font-sans);
   }
 
@@ -21,71 +36,71 @@
   }
 }
 
-/* Custom Scrollbars */
+/* Custom Soft Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(226, 217, 204, 0.3);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(51, 65, 85, 0.8);
+  background: rgba(180, 170, 155, 0.6);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.6);
+  background: var(--primary-mint);
 }
 
-/* Modern Card Utilities & Glassmorphism */
-.glass-panel {
-  background: rgba(15, 23, 42, 0.65);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+/* Soft Pastel Card Panels */
+.pastel-card {
+  background: #FFFDF9;
+  border: 1px solid rgba(226, 217, 204, 0.6);
+  box-shadow: 0 4px 20px -2px rgba(180, 160, 140, 0.08);
+  border-radius: 1.25rem;
 }
 
-.glass-panel-hover {
+.pastel-card-hover {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.glass-panel-hover:hover {
-  background: rgba(20, 30, 55, 0.75);
-  border-color: rgba(99, 102, 241, 0.25);
-  box-shadow: 0 12px 40px -10px rgba(99, 102, 241, 0.15);
+.pastel-card-hover:hover {
+  background: #FFFFFF;
+  border-color: rgba(72, 169, 153, 0.3);
+  box-shadow: 0 8px 30px -4px rgba(72, 169, 153, 0.12);
   transform: translateY(-2px);
 }
 
-/* Glowing text gradients */
-.gradient-text-indigo {
-  background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #e879f9 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+/* Soft Mint Primary Button */
+.btn-mint {
+  background-color: var(--primary-mint);
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px 0 rgba(72, 169, 153, 0.3);
+  transition: all 0.2s ease-in-out;
 }
-
-.gradient-text-cyan {
-  background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-/* Glowing primary buttons */
-.btn-glow-primary {
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #7c3aed 100%);
-  box-shadow: 0 4px 20px -2px rgba(99, 102, 241, 0.4);
-  transition: all 0.2s ease;
-}
-.btn-glow-primary:hover {
-  box-shadow: 0 6px 24px 0px rgba(124, 58, 237, 0.55);
+.btn-mint:hover {
+  background-color: var(--primary-mint-hover);
+  box-shadow: 0 6px 20px 0 rgba(72, 169, 153, 0.4);
   transform: translateY(-1px);
 }
 
-/* Pulse badge animation */
-@keyframes softPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.05); }
+.btn-mint-light {
+  background-color: var(--primary-mint-light);
+  color: var(--primary-mint-hover);
+  border: 1px solid rgba(72, 169, 153, 0.25);
+  transition: all 0.2s ease-in-out;
 }
-.animate-soft-pulse {
-  animation: softPulse 3s infinite ease-in-out;
+.btn-mint-light:hover {
+  background-color: #D3EFEA;
+  transform: translateY(-1px);
+}
+
+/* Soft Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 

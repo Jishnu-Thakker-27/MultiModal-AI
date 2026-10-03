@@ -2,19 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/common/Navbar';
 import Sidebar from './components/common/Sidebar';
-import DashboardPage from './pages/DashboardPage';
-import CoursesPage from './pages/CoursesPage';
-import UploadPage from './pages/UploadPage';
-import TutorPage from './pages/TutorPage';
+import ChatPage from './pages/ChatPage';
 import PracticePage from './pages/PracticePage';
 import ProgressPage from './pages/ProgressPage';
 import EvaluationPage from './pages/EvaluationPage';
-import { getCourses, createCourse } from './services/api';
+import UploadPage from './pages/UploadPage';
+import CoursesPage from './pages/CoursesPage';
+import { getCourses, createCourse, createConversation } from './services/api';
 
 export default function App() {
   const [courses, setCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState(null);
+  const [currentConversation, setCurrentConversation] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     getCourses()
@@ -23,11 +24,10 @@ export default function App() {
           setCourses(data);
           setSelectedCourse(data[0]);
         } else {
-          // Automatically create a default demo course on initial load so dashboard & chatbot are active immediately
           try {
             const defaultCourse = await createCourse({
-              title: "Data Structures & Algorithms",
-              description: "Core CS fundamentals course"
+              title: "Data Structures & Digital Fundamentals",
+              description: "Core academic materials"
             });
             setCourses([defaultCourse]);
             setSelectedCourse(defaultCourse);
@@ -44,35 +44,82 @@ export default function App() {
     setSelectedCourse(newCourse);
   };
 
-  const handleToggleSidebar = () => {
-    setIsSidebarOpen((prev) => !prev);
+  const handleSelectConversation = (conv) => {
+    setCurrentConversation(conv);
+  };
+
+  const handleNewChat = async () => {
+    try {
+      const newConv = await createConversation({
+        title: "New Learning Session",
+        course_id: selectedCourse?.id || "default_course"
+      });
+      setCurrentConversation(newConv);
+      setRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error("Failed to create new conversation", err);
+      setCurrentConversation(null);
+    }
+  };
+
+  const handleConversationUpdated = () => {
+    setRefreshTrigger(prev => prev + 1);
   };
 
   return (
     <Router>
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      <div className="h-screen bg-[#F7F3ED] text-[#2D3748] flex flex-col font-sans overflow-hidden">
         <Navbar
           selectedCourse={selectedCourse}
           courses={courses}
           onSelectCourse={setSelectedCourse}
           isSidebarOpen={isSidebarOpen}
-          onToggleSidebar={handleToggleSidebar}
+          onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
         />
+        
         <div className="flex-1 flex overflow-hidden relative">
           <Sidebar
             isOpen={isSidebarOpen}
             onClose={() => setIsSidebarOpen(false)}
+            currentConversation={currentConversation}
+            onSelectConversation={handleSelectConversation}
+            onNewChat={handleNewChat}
+            refreshTrigger={refreshTrigger}
           />
-          <main className="flex-1 overflow-y-auto bg-slate-900/40 transition-all duration-300">
+
+          <main className="flex-1 flex flex-col overflow-hidden bg-[#F7F3ED]">
             <Routes>
               <Route
                 path="/"
                 element={
-                  <DashboardPage
-                    selectedCourse={selectedCourse}
-                    onCourseCreated={handleCourseCreated}
+                  <ChatPage
+                    currentConversation={currentConversation}
+                    onSelectConversation={handleSelectConversation}
+                    onConversationUpdated={handleConversationUpdated}
+                    onNewChat={handleNewChat}
                   />
                 }
+              />
+              <Route
+                path="/practice"
+                element={
+                  <PracticePage
+                    selectedCourse={selectedCourse}
+                    currentConversation={currentConversation}
+                  />
+                }
+              />
+              <Route
+                path="/progress"
+                element={<ProgressPage selectedCourse={selectedCourse} />}
+              />
+              <Route
+                path="/evaluation"
+                element={<EvaluationPage />}
+              />
+              <Route
+                path="/upload"
+                element={<UploadPage selectedCourse={selectedCourse} />}
               />
               <Route
                 path="/courses"
@@ -85,11 +132,6 @@ export default function App() {
                   />
                 }
               />
-              <Route path="/upload" element={<UploadPage selectedCourse={selectedCourse} />} />
-              <Route path="/tutor" element={<TutorPage selectedCourse={selectedCourse} />} />
-              <Route path="/practice" element={<PracticePage selectedCourse={selectedCourse} />} />
-              <Route path="/progress" element={<ProgressPage selectedCourse={selectedCourse} />} />
-              <Route path="/evaluation" element={<EvaluationPage />} />
             </Routes>
           </main>
         </div>

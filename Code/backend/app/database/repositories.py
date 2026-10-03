@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database.models import (
     User, Course, Document, DocumentChunk, Topic, Subtopic, Concept,
-    Question, QuizAttempt, QuizAnswer, LearnerMastery, Conversation, Message
+    Question, QuizAttempt, QuizAnswer, LearnerMastery, Conversation, Message, ConversationSource
 )
 from typing import List, Optional, Dict, Any
 
@@ -76,10 +76,10 @@ class Repository:
         for c in chunks:
             chunk_objs.append(DocumentChunk(
                 document_id=c['document_id'],
-                course_id=c['course_id'],
-                chunk_index=c['chunk_index'],
+                course_id=c.get('course_id'),
+                chunk_index=c.get('chunk_index', 0),
                 content=c['content'],
-                source_type=c['source_type'],
+                source_type=c.get('source_type', 'pdf'),
                 page_number=c.get('page_number'),
                 slide_number=c.get('slide_number'),
                 start_time=c.get('start_time'),
@@ -91,6 +91,26 @@ class Repository:
             ))
         self.db.bulk_save_objects(chunk_objs)
         self.db.commit()
+
+    def bulk_create_chunks(self, document_id: str, course_id: str, chunks_data: List[Dict[str, Any]]):
+        formatted = []
+        for idx, c in enumerate(chunks_data):
+            formatted.append({
+                "document_id": document_id,
+                "course_id": course_id,
+                "chunk_index": idx,
+                "content": c.get("content", ""),
+                "source_type": c.get("source_type", "pdf"),
+                "page_number": c.get("page_number"),
+                "slide_number": c.get("slide_number"),
+                "start_time": c.get("start_time"),
+                "end_time": c.get("end_time"),
+                "topic": c.get("topic"),
+                "subtopic": c.get("subtopic"),
+                "concept": c.get("concept"),
+                "embedding": c.get("embedding")
+            })
+        self.add_chunks(formatted)
 
     def get_chunks_by_course(self, course_id: str) -> List[DocumentChunk]:
         return self.db.query(DocumentChunk).filter(DocumentChunk.course_id == course_id).all()
@@ -219,18 +239,79 @@ class Repository:
         self.db.commit()
         return mastery.mastery_score
 
-    # --- Conversation & Messages Persistence ---
-    def get_or_create_conversation(self, course_id: str, conversation_id: Optional[str] = None, user_id: str = "demo_student") -> Conversation:
+    # --- Conversation & Context Scope Management ---
+    def create_conversation(self, title: str = "New Conversation", user_id: str = "demo_student", course_id: Optional[str] = None, topic_name: Optional[str] = None) -> Conversation:
+        conv = Conversation(
+            user_id=user_id,
+            course_id=course_id,
+            title=title,
+            topic_name=topic_name
+        )
+        self.db.add(conv)
+        self.db.commit()
+        self.db.refresh(conv)
+        return conv
+
+    def get_conversations(self, user_id: str = "demo_student") -> List[Conversation]:
+        return self.db.query(Conversation).filter(
+            Conversation.user_id == user_id
+        ).order_by(Conversation.updated_at.desc()).all()
+
+    def get_conversation(self, conversation_id: str) -> Optional[Conversation]:
+        return self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
+
+    def update_conversation(self, conversation_id: str, title: Optional[str] = None, topic_name: Optional[str] = None):
+        conv = self.get_conversation(conversation_id)
+        if conv:
+            if title:
+                conv.title = title
+            if topic_name:
+                conv.topic_name = topic_name
+            self.db.commit()
+            self.db.refresh(conv)
+        return conv
+
+    def delete_conversation(self, conversation_id: str) -> bool:
+        conv = self.get_conversation(conversation_id)
+        if not conv:
+            return False
+        self.db.delete(conv)
+        self.db.commit()
+        return True
+
+    def attach_document_to_conversation(self, conversation_id: str, document_id: str) -> ConversationSource:
+        existing = self.db.query(ConversationSource).filter(
+            ConversationSource.conversation_id == conversation_id,
+            ConversationSource.document_id == document_id
+        ).first()
+        if not existing:
+            existing = ConversationSource(conversation_id=conversation_id, document_id=document_id)
+            self.db.add(existing)
+            self.db.commit()
+            self.db.refresh(existing)
+        return existing
+
+    def get_conversation_documents(self, conversation_id: str) -> List[Document]:
+        sources = self.db.query(ConversationSource).filter(
+            ConversationSource.conversation_id == conversation_id
+        ).all()
+        doc_ids = [s.document_id for s in sources]
+        if not doc_ids:
+            return []
+        return self.db.query(Document).filter(Document.id.in_(doc_ids)).all()
+
+    def get_conversation_document_ids(self, conversation_id: str) -> List[str]:
+        sources = self.db.query(ConversationSource).filter(
+            ConversationSource.conversation_id == conversation_id
+        ).all()
+        return [s.document_id for s in sources]
+
+    def get_or_create_conversation(self, course_id: Optional[str] = None, conversation_id: Optional[str] = None, user_id: str = "demo_student") -> Conversation:
         if conversation_id:
             conv = self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
             if conv:
                 return conv
-        conv = self.db.query(Conversation).filter(Conversation.course_id == course_id, Conversation.user_id == user_id).first()
-        if not conv:
-            conv = Conversation(course_id=course_id, user_id=user_id, title="Course Tutor Chat")
-            self.db.add(conv)
-            self.db.commit()
-            self.db.refresh(conv)
+        conv = self.create_conversation(title="New Conversation", user_id=user_id, course_id=course_id)
         return conv
 
     def save_chat_messages(self, conversation_id: str, user_text: str, bot_text: str, citations: List[Dict[str, Any]]):
@@ -238,13 +319,21 @@ class Repository:
         msg_bot = Message(conversation_id=conversation_id, sender="assistant", content=bot_text, citations=citations)
         self.db.add(msg_user)
         self.db.add(msg_bot)
+        
+        # Touch conversation updated_at timestamp
+        conv = self.get_conversation(conversation_id)
+        if conv:
+            conv.updated_at = datetime.utcnow()
+            # Auto-title conversation from first user query if still default
+            if conv.title in ["New Conversation", "New Chat"] and user_text:
+                conv.title = user_text[:35].strip() + ("..." if len(user_text) > 35 else "")
+
         self.db.commit()
 
-    def get_conversation_history(self, course_id: str, user_id: str = "demo_student") -> List[Dict[str, Any]]:
-        conv = self.db.query(Conversation).filter(Conversation.course_id == course_id, Conversation.user_id == user_id).first()
-        if not conv:
-            return []
-        msgs = self.db.query(Message).filter(Message.conversation_id == conv.id).order_by(Message.created_at.asc()).all()
+    def get_conversation_messages(self, conversation_id: str) -> List[Dict[str, Any]]:
+        msgs = self.db.query(Message).filter(
+            Message.conversation_id == conversation_id
+        ).order_by(Message.created_at.asc()).all()
         return [
             {
                 "id": m.id,
@@ -255,3 +344,12 @@ class Repository:
             }
             for m in msgs
         ]
+
+    def get_conversation_history(self, course_id: str, user_id: str = "demo_student") -> List[Dict[str, Any]]:
+        conv = self.db.query(Conversation).filter(
+            Conversation.course_id == course_id,
+            Conversation.user_id == user_id
+        ).order_by(Conversation.updated_at.desc()).first()
+        if not conv:
+            return []
+        return self.get_conversation_messages(conv.id)

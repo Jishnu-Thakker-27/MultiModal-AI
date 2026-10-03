@@ -23,20 +23,35 @@ def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
 
 def retrieve_top_chunks(
     db: Session,
-    course_id: str,
-    query: str,
+    course_id: str = None,
+    query: str = "",
     top_k: int = 5,
-    min_similarity: float = SIMILARITY_THRESHOLD
+    min_similarity: float = SIMILARITY_THRESHOLD,
+    conversation_id: str = None
 ) -> List[Dict[str, Any]]:
     """
     Retrieves top relevant chunks for a user query using vector similarity
-    and metadata filtering. Enforces similarity threshold for out-of-scope queries.
+    and metadata filtering. Enforces conversation-scoped document filtering
+    to prevent cross-conversation context contamination.
     """
     query_vector = generate_embedding(query)
-    chunks = db.query(DocumentChunk).filter(DocumentChunk.course_id == course_id).all()
+    
+    # 1. Conversation-scoped filtering takes priority
+    if conversation_id:
+        from app.database.repositories import Repository
+        repo = Repository(db)
+        allowed_doc_ids = repo.get_conversation_document_ids(conversation_id)
+        if not allowed_doc_ids:
+            logger.info(f"No documents attached to conversation_id: {conversation_id}")
+            return []
+        chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(allowed_doc_ids)).all()
+    elif course_id:
+        chunks = db.query(DocumentChunk).filter(DocumentChunk.course_id == course_id).all()
+    else:
+        chunks = db.query(DocumentChunk).all()
 
     if not chunks:
-        logger.info(f"No document chunks found for course_id: {course_id}")
+        logger.info(f"No document chunks found for conversation_id={conversation_id}, course_id={course_id}")
         return []
 
     scored_chunks = []
@@ -52,7 +67,8 @@ def retrieve_top_chunks(
             file_url = ""
             if doc and doc.file_path:
                 import os
-                file_url = f"/uploads/{c.course_id}/{os.path.basename(doc.file_path)}"
+                cid = c.course_id or "default"
+                file_url = f"/uploads/{cid}/{os.path.basename(doc.file_path)}"
 
             scored_chunks.append({
                 "chunk_id": c.id,

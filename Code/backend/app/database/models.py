@@ -193,12 +193,28 @@ class Conversation(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    course_id = Column(String(36), ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
-    title = Column(String(255), default="New Chat")
+    course_id = Column(String(36), ForeignKey("courses.id", ondelete="SET NULL"), nullable=True)
+    title = Column(String(255), default="New Conversation")
+    topic_name = Column(String(255), nullable=True) # E.g., 'Digital Fundamentals', 'Probability'
+    status = Column(String(50), default="active")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     course = relationship("Course", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
+    sources = relationship("ConversationSource", back_populates="conversation", cascade="all, delete-orphan")
+
+
+class ConversationSource(Base):
+    __tablename__ = "conversation_sources"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    conversation_id = Column(String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
+    document_id = Column(String(36), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    conversation = relationship("Conversation", back_populates="sources")
+    document = relationship("Document")
 
 
 class Message(Base):

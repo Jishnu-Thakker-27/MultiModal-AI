@@ -55,7 +55,56 @@ export const getCourseTopics = async (courseId) => {
   return response.data;
 };
 
+export const getConversations = async () => {
+  const response = await api.get('/conversations');
+  return response.data;
+};
+
+export const createConversation = async (data = {}) => {
+  const response = await api.post('/conversations', data);
+  return response.data;
+};
+
+export const getConversationDetails = async (conversationId) => {
+  const response = await api.get(`/conversations/${conversationId}`);
+  return response.data;
+};
+
+export const updateConversation = async (conversationId, data) => {
+  const response = await api.patch(`/conversations/${conversationId}`, data);
+  return response.data;
+};
+
+export const deleteConversation = async (conversationId) => {
+  const response = await api.delete(`/conversations/${conversationId}`);
+  return response.data;
+};
+
+export const postConversationChat = async (conversationId, question) => {
+  const response = await api.post(`/conversations/${conversationId}/chat`, { question });
+  return response.data;
+};
+
+export const uploadSourceToConversation = async (conversationId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post(`/conversations/${conversationId}/upload`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
+
+export const attachDocumentToConversation = async (conversationId, documentId) => {
+  const response = await api.post(`/conversations/${conversationId}/documents/${documentId}`);
+  return response.data;
+};
+
 export const sendChatMessage = async (courseId, question, conversationId = null) => {
+  if (conversationId) {
+    return postConversationChat(conversationId, question);
+  }
   const response = await api.post(`/courses/${courseId}/chat`, {
     question,
     conversation_id: conversationId,

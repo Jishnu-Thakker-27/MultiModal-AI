@@ -22,15 +22,18 @@ def generate_assessment(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    topic_name = "Course Concepts"
+    topic_name = payload.topic_name or "Course Concepts"
     topic_id = payload.topic_id
     if topic_id:
         t = repo.get_topic_by_id(topic_id)
         if t:
             topic_name = t.name
 
-    # Retrieve chunks strictly matching topic_name
-    chunks = retrieve_top_chunks(db, course_id, topic_name, top_k=5)
+    # Retrieve chunks strictly matching conversation_id or course_id
+    if payload.conversation_id:
+        chunks = retrieve_top_chunks(db, conversation_id=payload.conversation_id, query=topic_name, top_k=5)
+    else:
+        chunks = retrieve_top_chunks(db, course_id=course_id, query=topic_name, top_k=5)
     
     # Generate -> Verify -> Accept loop with requested topic validation
     generated = generate_questions_from_content(
