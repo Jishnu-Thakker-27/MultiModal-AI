@@ -105,6 +105,16 @@ def process_document(document_id: str, db: Session = Depends(get_db)):
         repo.add_chunks(chunks)
         repo.update_document_status(document_id, "Completed")
 
+        # Build explicit educational concept graph (nodes, relationships, document sequence)
+        from app.knowledge.concept_extractor import extract_and_build_concept_graph
+        extract_and_build_concept_graph(
+            db=db,
+            course_id=doc.course_id,
+            document_id=doc.id,
+            extracted_items=extracted,
+            source_type=doc.source_type
+        )
+
         # Dynamically infer topic structure from document text & title
         doc_base = os.path.splitext(doc.title)[0].replace("_", " ").replace("-", " ")
         topic_name = doc_base.title()

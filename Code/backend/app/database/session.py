@@ -34,7 +34,8 @@ def init_db():
         "ALTER TABLE conversations ADD COLUMN course_id VARCHAR(255)",
         "ALTER TABLE conversations ADD COLUMN topic_name VARCHAR(255)",
         "ALTER TABLE conversations ADD COLUMN status VARCHAR(50) DEFAULT 'active'",
-        "ALTER TABLE conversations ADD COLUMN updated_at DATETIME"
+        "ALTER TABLE conversations ADD COLUMN updated_at DATETIME",
+        "ALTER TABLE document_chunks ADD COLUMN concept_node_id VARCHAR(36)"
     ]:
         try:
             with engine.connect() as conn:

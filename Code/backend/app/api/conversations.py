@@ -17,6 +17,11 @@ from app.schemas.schemas import (
 from app.rag.retriever import retrieve_top_chunks
 from app.rag.reranker import rerank_chunks
 from app.rag.generator import generate_grounded_answer
+from app.tutor.intent_classifier import classify_learning_intent
+from app.tutor.prerequisite_resolver import PrerequisiteResolver
+from app.tutor.teaching_planner import TeachingPlanner
+from app.rag.hierarchical_retriever import retrieve_hierarchical_chunks
+from app.knowledge.graph_manager import GraphManager
 from app.ingestion.pdf_processor import extract_pdf_content
 from app.ingestion.ppt_processor import extract_pptx_content
 from app.ingestion.video_processor import extract_video_content
@@ -39,7 +44,7 @@ def list_conversations(
     for c in convs:
         msgs = repo.get_conversation_messages(c.id)
         docs = repo.get_conversation_documents(c.id)
-        last_msg = msgs[-1].created_at if msgs else c.updated_at
+        last_msg = msgs[-1]["created_at"] if msgs else c.updated_at
         res.append(ConversationResponse(
             id=c.id,
             title=c.title,
@@ -77,13 +82,33 @@ def create_conversation(
     # Process initial question if provided
     if payload.initial_question:
         question = payload.initial_question.strip()
-        # Set title from question if default title
         if not payload.title:
             repo.update_conversation(conv.id, title=question[:40] + ("..." if len(question)>40 else ""))
             
-        retrieved_chunks = retrieve_top_chunks(db, conversation_id=conv.id, query=question, top_k=5)
-        reranked = rerank_chunks(retrieved_chunks, question)
-        answer, citations, is_grounded = generate_grounded_answer(question, reranked)
+        intent_info = classify_learning_intent(question)
+        pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
+            course_id=conv.course_id or "default_course",
+            user_id=user_id,
+            query=question,
+            intent=intent_info["intent"]
+        )
+        retrieved_chunks = retrieve_hierarchical_chunks(
+            db=db,
+            query=question,
+            conversation_id=conv.id,
+            intent=intent_info["intent"],
+            target_concept=pedagogical_context.get("target_concept"),
+            prerequisite_nodes=pedagogical_context.get("prerequisites"),
+            is_introductory=pedagogical_context.get("is_introductory_request", True),
+            top_k=5
+        )
+        teaching_plan = TeachingPlanner().create_plan(
+            query=question,
+            intent_info=intent_info,
+            pedagogical_context=pedagogical_context,
+            retrieved_chunks=retrieved_chunks
+        )
+        answer, citations, is_grounded = generate_grounded_answer(question, retrieved_chunks, teaching_plan)
         repo.save_chat_messages(conv.id, question, answer, citations)
 
     return get_conversation_details(conv.id, db)
@@ -154,7 +179,7 @@ def update_conversation(
         topic_name=conv.topic_name,
         status=conv.status,
         message_count=len(msgs),
-        last_message_at=msgs[-1].created_at if msgs else conv.updated_at,
+        last_message_at=msgs[-1]["created_at"] if msgs else conv.updated_at,
         created_at=conv.created_at,
         updated_at=conv.updated_at,
         sources_count=len(docs)
@@ -183,23 +208,55 @@ def chat_in_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found")
         
     question = payload.question.strip()
+    user_id = payload.user_id or "demo_student"
     
-    # Auto-update conversation title if it's currently a default generic title
+    # Auto-update conversation title if default
     if conv.title in ["New Chat", "New Learning Session", "Untitled Session"]:
         new_title = question[:35] + ("..." if len(question) > 35 else "")
         repo.update_conversation(conversation_id, title=new_title)
         
-    # 1. Retrieve chunks restricted strictly to allowed sources for THIS conversation
-    retrieved_chunks = retrieve_top_chunks(db, conversation_id=conversation_id, query=question, top_k=5)
+    # 1. Intent Classification
+    intent_info = classify_learning_intent(question)
     
-    # 2. Rerank chunks
-    reranked = rerank_chunks(retrieved_chunks, question)
+    # 2. Prerequisite & Concept Resolution
+    pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
+        course_id=conv.course_id or "default_course",
+        user_id=user_id,
+        query=question,
+        intent=intent_info["intent"]
+    )
     
-    # 3. Generate grounded answer & citations
-    answer, citations, is_grounded = generate_grounded_answer(question, reranked)
+    # 3. Hierarchical RAG Retrieval
+    retrieved_chunks = retrieve_hierarchical_chunks(
+        db=db,
+        query=question,
+        conversation_id=conversation_id,
+        course_id=conv.course_id,
+        intent=intent_info["intent"],
+        target_concept=pedagogical_context.get("target_concept"),
+        prerequisite_nodes=pedagogical_context.get("prerequisites"),
+        is_introductory=pedagogical_context.get("is_introductory_request", True),
+        top_k=5
+    )
     
-    # 4. Save history under conversation_id
+    # 4. Teaching Planner
+    teaching_plan = TeachingPlanner().create_plan(
+        query=question,
+        intent_info=intent_info,
+        pedagogical_context=pedagogical_context,
+        retrieved_chunks=retrieved_chunks
+    )
+    
+    # 5. Grounded Tutor Response Generation
+    answer, citations, is_grounded = generate_grounded_answer(question, retrieved_chunks, teaching_plan)
+    
+    # 6. Save Message History
     repo.save_chat_messages(conversation_id, question, answer, citations)
+    
+    # 7. Update Student Concept Mastery
+    target_node = pedagogical_context.get("target_concept")
+    if target_node:
+        GraphManager(db).update_student_concept_mastery(user_id, target_node.id, delta=0.2)
     
     return ChatResponse(
         conversation_id=conversation_id,

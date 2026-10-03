@@ -70,6 +70,7 @@ class DocumentChunk(Base):
     topic = Column(String(255), nullable=True)
     subtopic = Column(String(255), nullable=True)
     concept = Column(String(255), nullable=True)
+    concept_node_id = Column(String(36), ForeignKey("concept_graph_nodes.id", ondelete="SET NULL"), nullable=True)
     
     # Store embedding as JSON list of floats for maximum compatibility (SQLite & PostgreSQL)
     embedding = Column(JSON, nullable=True)
@@ -228,3 +229,54 @@ class Message(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     conversation = relationship("Conversation", back_populates="messages")
+
+
+class ConceptGraphNode(Base):
+    __tablename__ = "concept_graph_nodes"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    course_id = Column(String(36), ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    document_id = Column(String(36), ForeignKey("documents.id", ondelete="CASCADE"), nullable=True)
+    name = Column(String(255), nullable=False)
+    normalized_name = Column(String(255), nullable=False, index=True)
+    concept_type = Column(String(50), nullable=False, default="definition") # 'definition', 'principle', 'operation', 'algorithm', 'application', 'formula'
+    description = Column(Text, nullable=True)
+    source_type = Column(String(50), nullable=True) # 'pdf', 'pptx', 'video'
+    page_number = Column(Integer, nullable=True)
+    slide_number = Column(Integer, nullable=True)
+    start_time = Column(String(20), nullable=True)
+    end_time = Column(String(20), nullable=True)
+    document_order = Column(Integer, default=0) # Sequence order index
+    summary_excerpt = Column(Text, nullable=True)
+    keywords = Column(JSON, nullable=True) # List of keywords
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    course = relationship("Course")
+    document = relationship("Document")
+
+
+class ConceptRelationship(Base):
+    __tablename__ = "concept_relationships"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    source_concept_id = Column(String(36), ForeignKey("concept_graph_nodes.id", ondelete="CASCADE"), nullable=False)
+    target_concept_id = Column(String(36), ForeignKey("concept_graph_nodes.id", ondelete="CASCADE"), nullable=False)
+    relationship_type = Column(String(50), nullable=False) # 'prerequisite_of', 'part_of', 'example_of', 'application_of', 'follows'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    source_concept = relationship("ConceptGraphNode", foreign_keys=[source_concept_id])
+    target_concept = relationship("ConceptGraphNode", foreign_keys=[target_concept_id])
+
+
+class ConceptMastery(Base):
+    __tablename__ = "student_concept_mastery"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    concept_id = Column(String(36), ForeignKey("concept_graph_nodes.id", ondelete="CASCADE"), nullable=False)
+    mastery_score = Column(Float, default=0.0) # 0.0 to 1.0
+    exposure_count = Column(Integer, default=0)
+    last_interaction_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    concept = relationship("ConceptGraphNode")
