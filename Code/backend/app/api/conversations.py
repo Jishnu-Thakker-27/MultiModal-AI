@@ -17,10 +17,11 @@ from app.schemas.schemas import (
 from app.rag.retriever import retrieve_top_chunks
 from app.rag.reranker import rerank_chunks
 from app.rag.generator import generate_grounded_answer
-from app.ingestion.pdf_parser import parse_pdf
-from app.ingestion.pptx_parser import parse_pptx
-from app.ingestion.video_parser import parse_video
-from app.rag.embeddings import generate_embeddings_batch
+from app.ingestion.pdf_processor import extract_pdf_content
+from app.ingestion.ppt_processor import extract_pptx_content
+from app.ingestion.video_processor import extract_video_content
+from app.ingestion.chunker import chunk_extracted_content
+from app.rag.embeddings import generate_batch_embeddings
 
 router = APIRouter(prefix="/api/conversations", tags=["Conversations"])
 
@@ -261,24 +262,31 @@ def upload_source_to_conversation(
     )
     
     # Process & chunk document immediately
-    chunks_data = []
+    extracted = []
     if source_type == "pdf":
-        chunks_data = parse_pdf(file_path)
+        extracted = extract_pdf_content(file_path)
     elif source_type == "pptx":
-        chunks_data = parse_pptx(file_path)
+        extracted = extract_pptx_content(file_path)
     elif source_type == "video":
-        chunks_data = parse_video(file_path)
+        extracted = extract_video_content(file_path)
         
-    if chunks_data:
+    if extracted:
+        chunks_data = chunk_extracted_content(
+            extracted_items=extracted,
+            document_id=doc.id,
+            course_id=course_id,
+            source_type=source_type
+        )
         contents = [c["content"] for c in chunks_data]
-        embeddings = generate_embeddings_batch(contents)
-        for i, c in enumerate(chunks_data):
-            c["embedding"] = embeddings[i]
+        embeddings = generate_batch_embeddings(contents)
+        for i, emb in enumerate(embeddings):
+            chunks_data[i]["embedding"] = emb
             
-        repo.bulk_create_chunks(doc.id, course_id, chunks_data)
-        repo.update_document_status(doc.id, "processed")
+        repo.add_chunks(chunks_data)
+        repo.update_document_status(doc.id, "Completed")
     else:
-        repo.update_document_status(doc.id, "failed", "No content extracted")
+        repo.update_document_status(doc.id, "Failed", "No content extracted")
+        chunks_data = []
         
     # Attach to conversation
     repo.attach_document_to_conversation(conversation_id, doc.id)
