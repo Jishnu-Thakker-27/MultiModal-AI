@@ -104,11 +104,11 @@ def get_conversation_details(
     msg_responses = []
     for m in messages:
         msg_responses.append({
-            "id": m.id,
-            "role": m.role,
-            "content": m.content,
-            "created_at": m.created_at,
-            "citations": m.citations or []
+            "id": m["id"],
+            "role": m.get("sender") or m.get("role") or "assistant",
+            "content": m["content"],
+            "created_at": m["created_at"],
+            "citations": m.get("citations") or []
         })
         
     doc_responses = []
