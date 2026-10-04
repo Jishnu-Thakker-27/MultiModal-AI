@@ -25,6 +25,7 @@ import {
   getConversationDetails,
   createConversation
 } from '../services/api';
+import MarkdownRenderer from '../components/common/MarkdownRenderer';
 
 const SUGGESTED_PROMPTS = [
   { topic: "Digital Fundamentals", text: "Explain binary number conversion with a clear step-by-step example." },
@@ -405,7 +406,11 @@ export default function ChatPage({
                         : 'bg-[#FFFDF9] text-[#2D3748] border border-[#E2D9CC] rounded-bl-none shadow-2xs'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    {msg.role === 'assistant' ? (
+                      <MarkdownRenderer content={msg.content} />
+                    ) : (
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    )}
                   </div>
 
                   {/* Sources / Citations */}

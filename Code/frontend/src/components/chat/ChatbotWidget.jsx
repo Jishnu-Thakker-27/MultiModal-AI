@@ -4,6 +4,7 @@ import { sendChatMessage } from '../../services/api';
 import { Send, Bot, User, FileText, Presentation, Video, Sparkles } from 'lucide-react';
 
 import SourceViewerModal from '../common/SourceViewerModal';
+import MarkdownRenderer from '../common/MarkdownRenderer';
 
 export default function ChatbotWidget({ selectedCourse, height = "h-96" }) {
   const navigate = useNavigate();
@@ -110,7 +111,11 @@ export default function ChatbotWidget({ selectedCourse, height = "h-96" }) {
                   : 'bg-slate-900/90 border border-slate-800 text-slate-200 rounded-tl-xs'
               }`}
             >
-              <div>{msg.content}</div>
+              {msg.sender === 'assistant' ? (
+                <MarkdownRenderer content={msg.content} className="text-slate-200" />
+              ) : (
+                <div className="whitespace-pre-wrap">{msg.content}</div>
+              )}
 
               {msg.citations && msg.citations.length > 0 && (
                 <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
