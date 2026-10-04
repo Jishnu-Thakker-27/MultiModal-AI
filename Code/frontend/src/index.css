@@ -1,107 +1,74 @@
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
 
-@layer base {
-  :root {
-    --bg-main: #F7F3ED;
-    --surface-main: #FFFDF9;
-    --surface-card: #FFFFFF;
-    --surface-secondary: #F0EAE1;
-    --primary-mint: #48A999;
-    --primary-mint-hover: #399283;
-    --primary-mint-light: #E6F4F1;
-    --accent-sky: #7EB0D5;
-    --accent-sky-light: #EBF3FA;
-    --accent-peach: #F2A679;
-    --accent-peach-light: #FDF1EA;
-    --accent-pink: #ED8B9E;
-    --text-main: #2D3748;
-    --text-muted: #718096;
-    --border-subtle: #E2D9CC;
-    --font-heading: 'Outfit', sans-serif;
-    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  }
+@custom-variant dark (&:where(.never-dark, .never-dark *));
 
-  body {
-    background-color: var(--bg-main);
-    background-image: 
-      radial-gradient(at 10% 10%, rgba(72, 169, 153, 0.06) 0px, transparent 40%),
-      radial-gradient(at 90% 15%, rgba(242, 166, 121, 0.07) 0px, transparent 45%),
-      radial-gradient(at 50% 90%, rgba(126, 176, 213, 0.05) 0px, transparent 50%);
-    color: var(--text-main);
-    font-family: var(--font-sans);
-  }
-
-  h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-heading);
-  }
+:root {
+  --bg-main: #fff8f0;
+  --text-main: #1d1b17;
+  --text-muted: #4f453f;
+  --card-bg: #ffffff;
+  --card-surface: #f9f3eb;
+  --card-high: #ede7df;
+  --primary: #745948;
+  --primary-container: #f3cfba;
+  --secondary-container: #cbe3f6;
+  --tertiary-container: #c0ddd0;
 }
 
-/* Custom Soft Scrollbars */
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  background-color: #fff8f0 !important;
+  color: #1d1b17 !important;
+}
+
+body {
+  overscroll-behavior: none;
+}
+
+/* Material symbols custom settings */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(226, 217, 204, 0.3);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(180, 170, 155, 0.6);
+  background: rgba(184, 169, 156, 0.4);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--primary-mint);
+  background: rgba(184, 169, 156, 0.7);
 }
 
-/* Soft Pastel Card Panels */
-.pastel-card {
-  background: #FFFDF9;
-  border: 1px solid rgba(226, 217, 204, 0.6);
-  box-shadow: 0 4px 20px -2px rgba(180, 160, 140, 0.08);
+/* Clay tactile utilities */
+.clay-card {
+  background-color: var(--card-bg);
+  border-radius: 1.5rem;
+  box-shadow: 0 20px 40px -10px rgba(195, 180, 170, 0.3), inset 0 2px 4px rgba(255, 255, 255, 0.95);
+}
+
+.clay-card-flat {
+  background-color: var(--card-bg);
   border-radius: 1.25rem;
+  box-shadow: 0 12px 24px -6px rgba(195, 180, 170, 0.25), inset 0 1.5px 2px rgba(255, 255, 255, 0.95);
 }
 
-.pastel-card-hover {
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.pastel-card-hover:hover {
-  background: #FFFFFF;
-  border-color: rgba(72, 169, 153, 0.3);
-  box-shadow: 0 8px 30px -4px rgba(72, 169, 153, 0.12);
-  transform: translateY(-2px);
+.clay-inset {
+  background-color: var(--card-surface);
+  box-shadow: inset 0 3px 6px rgba(175, 160, 147, 0.22), 0 1px 2px rgba(255, 255, 255, 0.9);
 }
 
-/* Soft Mint Primary Button */
-.btn-mint {
-  background-color: var(--primary-mint);
-  color: #FFFFFF;
-  box-shadow: 0 4px 14px 0 rgba(72, 169, 153, 0.3);
-  transition: all 0.2s ease-in-out;
+.clay-pill-active {
+  background-color: var(--card-high);
+  box-shadow: inset 0 1.5px 2px rgba(255, 255, 255, 0.9), 0 2px 4px rgba(184, 169, 156, 0.2);
 }
-.btn-mint:hover {
-  background-color: var(--primary-mint-hover);
-  box-shadow: 0 6px 20px 0 rgba(72, 169, 153, 0.4);
-  transform: translateY(-1px);
-}
-
-.btn-mint-light {
-  background-color: var(--primary-mint-light);
-  color: var(--primary-mint-hover);
-  border: 1px solid rgba(72, 169, 153, 0.25);
-  transition: all 0.2s ease-in-out;
-}
-.btn-mint-light:hover {
-  background-color: #D3EFEA;
-  transform: translateY(-1px);
-}
-
-/* Soft Animations */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
