@@ -15,7 +15,7 @@ class OpenAIProvider(LLMProvider):
     """
     def __init__(self):
         self._api_key = (os.getenv("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KEY", "") or "").strip()
-        self._model = (os.getenv("OPENAI_MODEL") or getattr(settings, "OPENAI_MODEL", "") or "gpt-4o-mini").strip()
+        self._model = (os.getenv("OPENAI_MODEL") or settings.OPENAI_MODEL or settings.LLM_MODEL).strip()
 
     @property
     def name(self) -> str:

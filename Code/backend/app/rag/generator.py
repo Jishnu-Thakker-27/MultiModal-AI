@@ -35,16 +35,18 @@ def generate_grounded_answer(
     # 1. Post-Retrieval Evidence Assessment
     if not chunks:
         return (
-            f"This topic '**{target_name}**' is not covered in the uploaded course material. I couldn't find enough information in the provided documents.",
+            f"This topic '**{target_name}**' is not covered in your uploaded course material. I couldn't find enough information in the provided documents.",
             [],
             False
         )
 
     # Assess max final score of retrieved chunks
     max_score = max([c.get("final_score", 0.0) for c in chunks]) if chunks else 0.0
-    if max_score < 0.20 and coverage_state == "STATE_A_NOT_FOUND":
+    # A missing target must never be sent to an LLM just because generic words
+    # inflated a retriever score.  Document summaries use STATE_C explicitly.
+    if coverage_state == "STATE_A_NOT_FOUND":
         return (
-            f"This topic '**{target_name}**' is not covered in the uploaded course material. I couldn't find enough information in the provided documents.",
+            f"This topic '**{target_name}**' is not covered in your uploaded course material. I couldn't find enough information in the provided documents.",
             [],
             False
         )
@@ -104,7 +106,7 @@ def generate_grounded_answer(
     fail_message = (
         f"⚠️ **Service Unavailable**: All configured AI LLM providers (OpenAI, Gemini, OpenRouter, Ollama) "
         f"are currently experiencing quota limits, rate limits, or connectivity issues.\n\n"
-        f"**Error details**: `{provider_response.error_message}`\n\n"
-        f"Please verify your API key configurations in `.env` or try your request again shortly."
+        "Please try again shortly. The server logs contain the provider-level "
+        "diagnostic needed to distinguish quota, model-access, and network errors."
     )
     return fail_message, citations, False

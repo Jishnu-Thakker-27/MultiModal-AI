@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
@@ -21,7 +22,7 @@ from app.tutor.intent_classifier import classify_learning_intent
 from app.tutor.prerequisite_resolver import PrerequisiteResolver
 from app.tutor.teaching_planner import TeachingPlanner
 from app.tutor.answer_validator import validate_tutor_response
-from app.rag.hierarchical_retriever import retrieve_hierarchical_chunks
+from app.rag.hierarchical_retriever import retrieve_hierarchical_chunks, retrieve_document_summary_chunks
 from app.knowledge.graph_manager import GraphManager
 from app.ingestion.pdf_processor import extract_pdf_content
 from app.ingestion.ppt_processor import extract_pptx_content
@@ -88,33 +89,28 @@ def create_conversation(
             repo.update_conversation(conv.id, title=question[:40] + ("..." if len(question)>40 else ""))
 
         intent_info = classify_learning_intent(question)
-        pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
-            course_id=conv.course_id or "default_course",
-            user_id=user_id,
-            query=question,
-            intent=intent_info["intent"],
-            conversation_id=conv.id
-        )
-        retrieved_chunks = retrieve_hierarchical_chunks(
-            db=db,
-            query=question,
-            target_name=pedagogical_context.get("target_name"),
-            conversation_id=conv.id,
-            course_id=conv.course_id,
-            intent=intent_info["intent"],
-            query_scope=intent_info.get("query_scope", "FOCUSED"),
-            target_concept=pedagogical_context.get("target_concept"),
-
-            prerequisite_nodes=pedagogical_context.get("prerequisites"),
-            is_introductory=pedagogical_context.get("is_introductory_request", True),
-            top_k=5
-        )
-        teaching_plan = TeachingPlanner().create_plan(
-            query=question,
-            intent_info=intent_info,
-            pedagogical_context=pedagogical_context,
-            retrieved_chunks=retrieved_chunks
-        )
+        if intent_info["intent"] in {"OVERVIEW", "DOCUMENT_SUMMARY"}:
+            retrieved_chunks = retrieve_document_summary_chunks(db, conversation_id=conv.id, top_k=8)
+            docs = repo.get_conversation_documents(conv.id)
+            doc_title = "Uploaded Course Material"
+            if docs and docs[0].title:
+                clean_title = re.sub(r'\.(pdf|pptx|docx|txt)$', '', docs[0].title, flags=re.I)
+                doc_title = re.sub(r'[-_–]', ' ', clean_title).strip()
+            pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO"}
+            teaching_plan = {"target_name": doc_title, "coverage_state": "STATE_C_SUFFICIENT_INFO", "teaching_stage": "DOCUMENT_OVERVIEW", "is_document_summary": True}
+        else:
+            pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
+                course_id=conv.course_id or "default_course", user_id=user_id, query=question,
+                intent=intent_info["intent"], conversation_id=conv.id
+            )
+            retrieved_chunks = retrieve_hierarchical_chunks(
+                db=db, query=question, target_name=pedagogical_context.get("target_name"),
+                conversation_id=conv.id, course_id=conv.course_id, intent=intent_info["intent"],
+                query_scope=intent_info.get("query_scope", "FOCUSED"), target_concept=pedagogical_context.get("target_concept"),
+                prerequisite_nodes=pedagogical_context.get("prerequisites"),
+                is_introductory=pedagogical_context.get("is_introductory_request", True), top_k=5
+            )
+            teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks)
         raw_answer, citations, is_grounded = generate_grounded_answer(question, retrieved_chunks, teaching_plan)
         answer, citations = validate_tutor_response(raw_answer, pedagogical_context.get("target_name"), retrieved_chunks, citations)
         repo.save_chat_messages(conv.id, question, answer, citations)
@@ -230,38 +226,28 @@ def chat_in_conversation(
     intent_info = classify_learning_intent(question)
 
     # 2. Generalized Target & 3-State Coverage Resolution (Strictly scoped to this conversation's attached sources!)
-    pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
-        course_id=conv.course_id or "default_course",
-        user_id=user_id,
-        query=question,
-        intent=intent_info["intent"],
-        conversation_id=conversation_id,
-        conversation_history=messages
-    )
-
-    # 3. Target-Centered Hierarchical RAG Retrieval
-    retrieved_chunks = retrieve_hierarchical_chunks(
-        db=db,
-        query=question,
-        target_name=pedagogical_context.get("target_name"),
-        conversation_id=conversation_id,
-        course_id=conv.course_id,
-        intent=intent_info["intent"],
-        query_scope=intent_info.get("query_scope", "FOCUSED"),
-        target_concept=pedagogical_context.get("target_concept"),
-        prerequisite_nodes=pedagogical_context.get("prerequisites"),
-        is_introductory=pedagogical_context.get("is_introductory_request", True),
-        top_k=5
-    )
-
-
-    # 4. Generalized Teaching Planner
-    teaching_plan = TeachingPlanner().create_plan(
-        query=question,
-        intent_info=intent_info,
-        pedagogical_context=pedagogical_context,
-        retrieved_chunks=retrieved_chunks
-    )
+    if intent_info["intent"] in {"OVERVIEW", "DOCUMENT_SUMMARY"}:
+        docs = repo.get_conversation_documents(conversation_id)
+        doc_title = "Uploaded Course Material"
+        if docs and docs[0].title:
+            clean_title = re.sub(r'\.(pdf|pptx|docx|txt)$', '', docs[0].title, flags=re.I)
+            doc_title = re.sub(r'[-_–]', ' ', clean_title).strip()
+        pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO"}
+        retrieved_chunks = retrieve_document_summary_chunks(db, conversation_id=conversation_id, top_k=8)
+        teaching_plan = {"target_name": doc_title, "coverage_state": "STATE_C_SUFFICIENT_INFO", "teaching_stage": "DOCUMENT_OVERVIEW", "is_document_summary": True}
+    else:
+        pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
+            course_id=conv.course_id or "default_course", user_id=user_id, query=question,
+            intent=intent_info["intent"], conversation_id=conversation_id, conversation_history=messages
+        )
+        retrieved_chunks = retrieve_hierarchical_chunks(
+            db=db, query=question, target_name=pedagogical_context.get("target_name"),
+            conversation_id=conversation_id, course_id=conv.course_id, intent=intent_info["intent"],
+            query_scope=intent_info.get("query_scope", "FOCUSED"), target_concept=pedagogical_context.get("target_concept"),
+            prerequisite_nodes=pedagogical_context.get("prerequisites"),
+            is_introductory=pedagogical_context.get("is_introductory_request", True), top_k=5
+        )
+        teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks)
 
     # 5. Grounded Tutor Response Generation (3-State Model)
     raw_answer, citations, is_grounded = generate_grounded_answer(question, retrieved_chunks, teaching_plan)
@@ -358,12 +344,16 @@ def upload_source_to_conversation(
     )
 
     extracted = []
-    if source_type == "pdf":
-        extracted = extract_pdf_content(file_path)
-    elif source_type == "pptx":
-        extracted = extract_pptx_content(file_path)
-    elif source_type == "video":
-        extracted = extract_video_content(file_path)
+    try:
+        if source_type == "pdf":
+            extracted = extract_pdf_content(file_path)
+        elif source_type == "pptx":
+            extracted = extract_pptx_content(file_path)
+        elif source_type == "video":
+            extracted = extract_video_content(file_path)
+    except Exception as exc:
+        repo.update_document_status(doc.id, "Failed", str(exc))
+        raise HTTPException(status_code=422, detail=f"Source processing failed: {exc}")
 
     if extracted:
         chunks_data = chunk_extracted_content(
@@ -373,11 +363,22 @@ def upload_source_to_conversation(
             source_type=source_type
         )
         contents = [c["content"] for c in chunks_data]
-        embeddings = generate_batch_embeddings(contents)
+        try:
+            embeddings = generate_batch_embeddings(contents)
+        except Exception as exc:
+            repo.update_document_status(doc.id, "Failed", str(exc))
+            raise HTTPException(status_code=503, detail=f"Semantic indexing failed: {exc}")
         for i, emb in enumerate(embeddings):
             chunks_data[i]["embedding"] = emb
 
         repo.add_chunks(chunks_data)
+        # The conversation upload is the primary UI path, so it must populate
+        # the same concept graph used by the tutoring planner.
+        from app.knowledge.concept_extractor import extract_and_build_concept_graph
+        extract_and_build_concept_graph(
+            db=db, course_id=course_id, document_id=doc.id,
+            extracted_items=extracted, source_type=source_type
+        )
         repo.update_document_status(doc.id, "Completed")
     else:
         repo.update_document_status(doc.id, "Failed", "No content extracted")

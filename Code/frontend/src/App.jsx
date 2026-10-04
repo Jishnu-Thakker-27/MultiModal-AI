@@ -94,6 +94,7 @@ export default function App() {
                 element={
                   <ChatPage
                     currentConversation={currentConversation}
+                    selectedCourse={selectedCourse}
                     onSelectConversation={handleSelectConversation}
                     onConversationUpdated={handleConversationUpdated}
                     onNewChat={handleNewChat}

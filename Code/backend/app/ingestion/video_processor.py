@@ -20,31 +20,8 @@ def extract_video_content(file_path: str) -> List[Dict[str, Any]]:
     filename = os.path.basename(file_path)
     logger.info(f"Processing lecture video: {filename}")
 
-    # Fallback/sample transcript generator if OpenAI audio API key is not configured or for instant demonstration
-    segments = [
-        {
-            "start_time": "00:00:15",
-            "end_time": "00:03:45",
-            "text": f"Welcome to the lecture recording for {filename}. Today we will cover fundamental data structure principles, array memory layouts, and algorithm efficiency analysis."
-        },
-        {
-            "start_time": "00:03:46",
-            "end_time": "00:08:20",
-            "text": "A Binary Search Tree (BST) is a node-based binary tree data structure where the key in each node is greater than all keys in its left subtree and less than all keys in its right subtree."
-        },
-        {
-            "start_time": "00:08:21",
-            "end_time": "00:14:32",
-            "text": "Insertion into a BST operates recursively. We compare the target key with the root, proceeding left or right until a null position is found to attach the new node."
-        },
-        {
-            "start_time": "00:14:33",
-            "end_time": "00:21:10",
-            "text": "AVL trees perform tree rotations (left rotation, right rotation, double rotations) upon insertion or deletion to strictly maintain O(log N) height balance."
-        }
-    ]
-
-    # Attempt OpenAI Whisper API if key is present
+    # Transcribe the actual uploaded lecture.  A fabricated demo transcript
+    # would poison the knowledge base and produce uncited hallucinations.
     if settings.OPENAI_API_KEY:
         try:
             from openai import OpenAI
@@ -71,4 +48,7 @@ def extract_video_content(file_path: str) -> List[Dict[str, Any]]:
         except Exception as e:
             logger.warning(f"Whisper API transcription unavailable or failed ({e}). Using structured transcript processor.")
 
-    return segments
+    raise RuntimeError(
+        "Video transcription failed. Configure a working Whisper-compatible "
+        "transcription provider before using this video as a chat source."
+    )

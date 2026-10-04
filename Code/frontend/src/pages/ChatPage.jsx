@@ -35,6 +35,7 @@ const SUGGESTED_PROMPTS = [
 
 export default function ChatPage({ 
   currentConversation, 
+  selectedCourse,
   onSelectConversation, 
   onConversationUpdated,
   onNewChat 
@@ -123,6 +124,7 @@ export default function ChatPage({
         const firstFileName = attachedFiles.length > 0 ? attachedFiles[0].name : query;
         const newConv = await createConversation({
           title: firstFileName.slice(0, 35) + (firstFileName.length > 35 ? '...' : ''),
+          course_id: selectedCourse?.id || 'default_course',
           topic_name: 'General'
         });
         activeConvId = newConv.id;
@@ -182,15 +184,16 @@ export default function ChatPage({
     if (!files.length) return;
 
     setIsUploading(true);
-    setUploadProgressMsg(`Processing and chunking ${files[0].name}...`);
+    setUploadProgressMsg(`Uploading ${files[0].name}...`);
+
+    let activeConvId = currentConversation?.id;
 
     try {
-      let activeConvId = currentConversation?.id;
-
       // If no active session, create a new session automatically for the uploaded file
       if (!activeConvId) {
         const newConv = await createConversation({
           title: files[0].name.slice(0, 35) + (files[0].name.length > 35 ? '...' : ''),
+          course_id: selectedCourse?.id || 'default_course',
           topic_name: 'General'
         });
         activeConvId = newConv.id;
@@ -198,17 +201,39 @@ export default function ChatPage({
       }
 
       for (const f of files) {
-        setUploadProgressMsg(`Extracting text, tables & math from ${f.name}...`);
+        setUploadProgressMsg(`Extracting text, tables & chunking ${f.name}...`);
         await uploadSourceToConversation(activeConvId, f);
       }
 
+      // Mark upload as complete immediately so user sees the document is ready
+      setIsUploading(false);
+      setUploadProgressMsg('');
       await loadDetails(activeConvId);
       if (onConversationUpdated) onConversationUpdated();
 
-      // Trigger automatic initial summary explanation query
+      // Trigger automatic initial summary explanation query as a standard chat message
+      const overviewQuery = "Provide an overview of the main topics and key concepts in this uploaded document.";
       setIsLoading(true);
-      await postConversationChat(activeConvId, "Provide a overview of the main topics and key concepts in this uploaded document.");
-      await loadDetails(activeConvId);
+      setMessages(prev => [
+        ...prev,
+        {
+          id: 'temp-' + Date.now(),
+          role: 'user',
+          content: overviewQuery,
+          created_at: new Date().toISOString()
+        }
+      ]);
+
+      try {
+        await postConversationChat(activeConvId, overviewQuery);
+        await loadDetails(activeConvId);
+      } catch (chatErr) {
+        console.error("Initial summary generation notice:", chatErr);
+        // Refresh details to ensure whatever state exists is synced
+        await loadDetails(activeConvId);
+      } finally {
+        setIsLoading(false);
+      }
 
     } catch (err) {
       console.error("Failed to upload source", err);
@@ -217,7 +242,7 @@ export default function ChatPage({
       setIsUploading(false);
       setIsLoading(false);
       setUploadProgressMsg('');
-      e.target.value = null;
+      if (e.target) e.target.value = null;
     }
   };
 

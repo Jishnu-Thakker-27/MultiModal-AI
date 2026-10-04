@@ -9,6 +9,14 @@ logger = logging.getLogger("study_companion.rag.embeddings")
 
 _ST_MODEL = None
 
+
+class EmbeddingGenerationError(RuntimeError):
+    """Raised when no semantic embedding provider is available.
+
+    Hash vectors can make unrelated text appear relevant.  Failing ingestion is
+    safer than silently building an unreliable source-grounding index.
+    """
+
 def get_sentence_transformer_model():
     """Lazily load local sentence transformer model for 100% offline embedding generation."""
     global _ST_MODEL
@@ -65,7 +73,15 @@ def generate_embedding(text: str) -> List[float]:
         except Exception as e:
             logger.warning(f"OpenAI embedding API failed ({e}). Using deterministic feature vector.")
 
-    # 3. Deterministic N-gram & Word Feature Vector (1536 dims)
+    if not settings.ALLOW_DETERMINISTIC_EMBEDDINGS:
+        raise EmbeddingGenerationError(
+            "No semantic embedding provider is available. Configure a cached "
+            "SentenceTransformer model or a working OpenAI embedding API key."
+        )
+
+    # 3. Explicit development-only deterministic fallback. Never enable this in
+    # a source-grounded deployment: it is lexical, not semantic.
+    logger.warning("Using deterministic development embedding fallback; retrieval quality is degraded.")
     ENGLISH_STOP_WORDS = {
         "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "as", "at",
         "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "can", "could",

@@ -23,14 +23,22 @@ class PytestMockLLMProvider(LLMProvider):
         return True
 
     def generate(self, prompt, system_prompt="", image_paths=None):
-        # Extract context or topic keywords from prompt to generate realistic pedagogical response
-        content = "Synthesized pedagogical explanation: Curve fitting and self-balancing B Tree structures are defined mathematically."
+        import re
+        # Extract target concept from teaching plan if present
+        target_match = re.search(r'- Target Concept:\s*(.+)', prompt)
+        concept = target_match.group(1).strip() if target_match else ""
+
+        if not concept:
+            student_match = re.search(r'STUDENT QUESTION:\s*(.+)', prompt)
+            concept = student_match.group(1).strip() if student_match else "Concept"
+
+        content = f"Synthesized pedagogical explanation: {concept} is defined and explained in detail."
         if "least-squares" in prompt.lower() or "least squares" in prompt.lower():
-            content = "The method of least squares minimizes the sum of squared residuals y = a + bx."
+            content = f"The method of least squares minimizes the sum of squared residuals y = a + bx for {concept}."
         elif "forward difference" in prompt.lower():
-            content = "Forward difference operator Delta f(x) = f(x+h) - f(x)."
+            content = f"Forward difference operator Delta f(x) = f(x+h) - f(x) for {concept}."
         elif "b tree" in prompt.lower() or "b-tree" in prompt.lower():
-            content = "A B-tree is defined as a self-balancing search tree."
+            content = f"A B-tree is defined as a self-balancing search tree for {concept}."
 
         return ProviderResponse(
             content=content,

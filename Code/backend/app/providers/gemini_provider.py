@@ -99,13 +99,13 @@ class GeminiProvider(LLMProvider):
             "contents": [{"parts": parts}],
             "generationConfig": {
                 "temperature": 0.3,
-                "maxOutputTokens": 2048
+                "maxOutputTokens": 4096
             }
         }
 
-        # Build fallback model list
+        # Build fallback model list with verified active models
         candidate_models = [self._model_name]
-        for fallback in ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-2.5-flash", "gemini-flash-latest"]:
+        for fallback in ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-3.8-flash"]:
             if fallback not in candidate_models:
                 candidate_models.append(fallback)
 
@@ -149,11 +149,15 @@ class GeminiProvider(LLMProvider):
                     last_error = f"HTTP {e.code} ({model}): {err_body[:200]}"
                     if e.code in (429, 503):
                         logger.warning(f"Gemini {e.code} limit on model '{model}'. Rotating key/model...")
-                        self.rotate_key()
-                        time.sleep(1.0)
-                        continue
+                        if len(self.api_keys) > 1 and key_attempt < len(self.api_keys) - 1:
+                            self.rotate_key()
+                            time.sleep(0.5)
+                            continue
+                        else:
+                            # Quota exhausted for this key; don't waste time retrying same exhausted key across models
+                            break
                     elif e.code == 404:
-                        logger.warning(f"Gemini model '{model}' not found (404). Trying next model...")
+                        logger.warning(f"Gemini model '{model}' not found (404). Trying next candidate...")
                         break
                     else:
                         break

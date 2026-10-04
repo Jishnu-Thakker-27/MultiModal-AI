@@ -88,6 +88,10 @@ class Repository:
                 topic=c.get('topic'),
                 subtopic=c.get('subtopic'),
                 concept=c.get('concept'),
+                heading=c.get('heading'),
+                section=c.get('section'),
+                page_end=c.get('page_end'),
+                page_type=c.get('page_type', 'TEXT'),
                 embedding=c.get('embedding')
             ))
         self.db.bulk_save_objects(chunk_objs)

@@ -1,23 +1,20 @@
 import re
 from typing import Dict, Any
+from app.tutor.target_resolver import is_document_overview_query
 
 def classify_learning_intent(query: str) -> Dict[str, Any]:
     """
     Classifies student learning intent to determine optimal retrieval and synthesis strategy.
-
-    Supported Intents:
-    - METADATA_SYLLABUS: Explicit inquiry about document title, syllabus, course code, or cover page metadata.
-    - VISUAL_DIAGRAM: Inquiry about graphs, charts, diagrams, flowcharts, or visual figures.
-    - PAGE_SPECIFIC: Inquiry targeting an exact page (e.g. "Explain page 27", "Example on page 18").
-    - SUMMARY: Unit or chapter level summary request (e.g. "Summarize Unit 4").
-    - DEFINITION: Direct definition lookup (e.g. "What is least squares?", "Define curve fitting").
-    - PROCEDURE / FORMULA: Step-by-step algorithm, procedure, or mathematical formula extraction.
-    - LEARN_CONCEPT: General conceptual explanation (e.g. "Explain me curve fitting").
-    - SOLVE_PROBLEM: Problem solving or calculation exercise.
-    - QUIZ: Practice assessment request.
-    - FOLLOW_UP: Short follow-up question in conversation context.
     """
     q_clean = query.strip().lower()
+
+    if is_document_overview_query(q_clean):
+        return {
+            "intent": "OVERVIEW",
+            "is_foundational": True,
+            "suppress_cover": False,
+            "query_scope": "BROAD"
+        }
 
     # Determine intent result dictionary
     if re.search(r'\b(cover page|document title|course code|syllabus|table of contents|first page|metadata|what document is this)\b', q_clean):
@@ -28,8 +25,8 @@ def classify_learning_intent(query: str) -> Dict[str, Any]:
         res = {"intent": "PAGE_SPECIFIC", "target_page": target_page, "is_foundational": False, "suppress_cover": False if target_page == 1 else True}
     elif re.search(r'\b(graph|diagram|chart|plot|figure|flowchart|illustration|table|image)\b', q_clean):
         res = {"intent": "VISUAL_DIAGRAM", "is_foundational": False, "suppress_cover": True}
-    elif re.search(r'\b(summarize|summary|overview of unit|overview of chapter|recap)\b', q_clean):
-        res = {"intent": "SUMMARY", "is_foundational": False, "suppress_cover": True}
+    elif re.search(r'\b(summarize|summary|overview|recap|main topics|key concepts)\b', q_clean):
+        res = {"intent": "DOCUMENT_SUMMARY", "is_foundational": False, "suppress_cover": True}
     elif re.search(r'\b(quiz|test|practice|assessment|question|exam)\b', q_clean):
         res = {"intent": "QUIZ", "is_foundational": False, "suppress_cover": True}
     elif re.search(r'\b(convert|solve|evaluate|calculate|trace|formula for|equation for)\b', q_clean):

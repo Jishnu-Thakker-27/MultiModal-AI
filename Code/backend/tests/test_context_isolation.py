@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.database.models import Base, Course, Document, DocumentChunk
+from app.database.models import Base, User, Course, Document, DocumentChunk, Conversation, Message
 from app.database.repositories import Repository
 from app.rag.retriever import retrieve_top_chunks
 from app.rag.generator import generate_grounded_answer

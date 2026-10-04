@@ -13,12 +13,16 @@ class Settings(BaseModel):
     
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY", None)
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
+    # Keep the legacy provider-specific setting, but make the documented LLM_MODEL
+    # setting the effective default for tutor chat as well.
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", os.getenv("LLM_MODEL", "gpt-4o-mini"))
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+    ALLOW_DETERMINISTIC_EMBEDDINGS: bool = os.getenv("ALLOW_DETERMINISTIC_EMBEDDINGS", "false").lower() == "true"
     
     # Provider-Agnostic Multi-LLM Architecture Settings
     LLM_PROVIDER_PRIORITY: str = os.getenv("LLM_PROVIDER_PRIORITY", "openai,gemini,openrouter,ollama")
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY", None)
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 
     OPENROUTER_API_KEY: Optional[str] = os.getenv("OPENROUTER_API_KEY", None)

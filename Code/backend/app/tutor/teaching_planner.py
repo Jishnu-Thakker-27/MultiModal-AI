@@ -40,7 +40,13 @@ class TeachingPlanner:
                 f"1. Context Notice: Uploaded material covers specific subtopics/operations for {target_name}, but lacks a full introductory definition.",
                 f"2. Explanation of available subtopic content from course material"
             ]
-
+        elif intent in ["OVERVIEW", "SUMMARY"]:
+            teaching_stage = "DOCUMENT_OVERVIEW"
+            concepts_to_cover = [
+                f"1. Executive Summary: Core focus and purpose of {target_name}",
+                f"2. Core Topics & Key Methods: Systematic breakdown of every major method, concept, and technique in the document",
+                f"3. Practical Applications & Working Conditions"
+            ]
         elif is_intro or intent in ["LEARN_CONCEPT", "DEFINITION"]:
             teaching_stage = "FOUNDATIONS_FIRST"
             c_type = target_node.concept_type if target_node else "concept"

@@ -1,3 +1,4 @@
+import os
 import logging
 import re
 import numpy as np
@@ -110,8 +111,8 @@ def retrieve_hierarchical_chunks(
         scope_boost = 1.0
 
         # 3. Cover Page / Metadata Suppression (Query-Aware)
-        is_cover_chunk = (c.page_type == "COVER_METADATA" or p_start == 1) and not is_metadata_query
-        if p_start == 1 and not is_metadata_query:
+        is_cover_chunk = (c.page_type == "COVER_METADATA" or p_start == 1) and not is_metadata_query and intent not in ["OVERVIEW", "SUMMARY"]
+        if p_start == 1 and not is_metadata_query and intent not in ["OVERVIEW", "SUMMARY"]:
             if any(sym in content_lower for sym in ["unit-", "course code", "credits", "department of", "statistics and numerical"]):
                 if not any(body_kw in content_lower for body_kw in ["is defined as", "process of finding", "least squares", "forward difference"]):
                     is_cover_chunk = True
@@ -209,17 +210,18 @@ def retrieve_hierarchical_chunks(
     seen_sections = set()
     
     # 8. Scope-Based Candidate Sampling (BROAD, COMPARISON, FOCUSED)
-    if query_scope == "BROAD" or intent == "SUMMARY":
+    if query_scope == "BROAD" or intent in ["SUMMARY", "OVERVIEW"]:
         logger.info("Retriever: Executing BROAD scope multi-section sampling across chapter topics...")
+        broad_k = max(top_k, 7)
         # For BROAD scope: pick highest-scoring chunk from EACH distinct section/subsection across document
         for c in scored_chunks:
-            if c.get("page_type") == "COVER_METADATA" or (c.get("page_number") == 1 and c["final_score"] < 0.5):
+            if c.get("page_type") == "COVER_METADATA" or (c.get("page_number") == 1 and c["final_score"] < 0.5 and intent not in ["SUMMARY", "OVERVIEW"]):
                 continue
             sec = (c.get("section") or f"Page_{c['page_number']}").strip()
             if sec not in seen_sections and c["final_score"] > 0.05:
                 seen_sections.add(sec)
                 top_candidates.append(c)
-                if len(top_candidates) >= top_k:
+                if len(top_candidates) >= broad_k:
                     break
     elif query_scope == "COMPARISON":
         logger.info("Retriever: Executing COMPARISON scope multi-target sampling...")
@@ -290,7 +292,7 @@ def retrieve_hierarchical_chunks(
                     "file_url": cand["file_url"],
                     "content": next_cand.content,
                     "page_number": next_cand.page_number or cand["page_number"],
-                    "page_end": next_cand.page_end or cand["page_end"],
+                    "page_end": next_cand.page_end or next_cand.page_number or cand["page_number"],
                     "heading": next_cand.heading or cand["heading"],
                     "section": next_cand.section or cand["section"],
                     "page_type": next_cand.page_type or "TEXT",
@@ -309,4 +311,73 @@ def retrieve_hierarchical_chunks(
         logger.info(f"  Result #{idx}: Page {ec['page_number']} (Score: {ec['final_score']:.2f}, Section: '{ec['section']}') -> Excerpt: '{ec['content'][:60]}...'")
 
     return expanded_chunks
+
+
+def retrieve_document_summary_chunks(
+    db: Session,
+    conversation_id: Optional[str] = None,
+    course_id: Optional[str] = None,
+    top_k: int = 8,
+) -> List[Dict[str, Any]]:
+    """Return representative, source-distributed evidence for a document overview.
+
+    A summary is not a missing concept.  Selecting one substantive chunk from
+    successive pages/sections avoids the old behaviour of ranking arbitrary
+    worked examples merely because the query contains generic words.
+    """
+    repo = Repository(db)
+    if conversation_id:
+        document_ids = repo.get_conversation_document_ids(conversation_id)
+        if not document_ids:
+            return []
+        chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(document_ids)).order_by(
+            DocumentChunk.document_id, DocumentChunk.page_number, DocumentChunk.chunk_index
+        ).all()
+    elif course_id:
+        chunks = db.query(DocumentChunk).filter(DocumentChunk.course_id == course_id).order_by(
+            DocumentChunk.document_id, DocumentChunk.page_number, DocumentChunk.chunk_index
+        ).all()
+    else:
+        return []
+
+    documents = {d.id: d for d in db.query(Document).filter(Document.id.in_({c.document_id for c in chunks})).all()}
+    representatives = []
+    seen_locations = set()
+    for c in chunks:
+        if not c.content or len(c.content.split()) < 12 or c.page_type == "COVER_METADATA":
+            continue
+        location = (c.document_id, c.page_number or c.slide_number or c.start_time, c.section or "")
+        if location in seen_locations:
+            continue
+        seen_locations.add(location)
+        doc = documents.get(c.document_id)
+        cid = c.course_id or "default"
+        representatives.append({
+            "chunk_index": c.chunk_index,
+            "chunk_id": c.id,
+            "document_id": c.document_id,
+            "document_title": doc.title if doc else "Course Document",
+            "source_type": c.source_type,
+            "file_url": f"/uploads/{cid}/{os.path.basename(doc.file_path)}" if doc and doc.file_path else "",
+            "content": c.content,
+            "page_number": c.page_number,
+            "page_end": c.page_end or c.page_number,
+            "heading": c.heading or f"Page {c.page_number}",
+            "section": c.section or "Document overview",
+            "page_type": c.page_type or "TEXT",
+            "slide_number": c.slide_number,
+            "start_time": c.start_time,
+            "end_time": c.end_time,
+            "relevance_category": "DOCUMENT_OVERVIEW",
+            "retrieval_reason": "distributed_document_summary",
+            "similarity_score": 1.0,
+            "lexical_score": 1.0,
+            "final_score": 1.0,
+        })
+
+    if len(representatives) <= top_k:
+        return representatives
+    # Preserve coverage across the full document instead of taking only its start.
+    positions = [round(i * (len(representatives) - 1) / (top_k - 1)) for i in range(top_k)]
+    return [representatives[i] for i in dict.fromkeys(positions)]
 

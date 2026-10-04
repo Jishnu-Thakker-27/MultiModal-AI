@@ -32,10 +32,16 @@ def build_grounded_prompt(query: str, chunks: List[Dict[str, Any]], teaching_pla
 
     plan_str = ""
     if teaching_plan:
-        plan_str = f"""TEACHING PLAN:
-- Target Concept: {teaching_plan.get('target_name')}
-- Stage: {teaching_plan.get('teaching_stage')}
-"""
+        plan_str = f"TEACHING PLAN:\n- Target Concept: {teaching_plan.get('target_name')}\n- Stage: {teaching_plan.get('teaching_stage')}\n"
+        if teaching_plan.get("teaching_stage") == "DOCUMENT_OVERVIEW" or teaching_plan.get("is_document_summary"):
+            plan_str += (
+                "- PEDAGOGICAL DIRECTIVE (DOCUMENT OVERVIEW):\n"
+                "  1. Provide a comprehensive, well-structured overview of the uploaded chapter/document.\n"
+                "  2. State the central mathematical problem, purpose, and key definitions.\n"
+                "  3. Provide an organized breakdown of every major method and topic present in the source context (define each method, explain its core idea and formula).\n"
+                "  4. Conclude with a helpful summary comparison or learning roadmap.\n"
+                "  5. Synthesize clearly for a student. DO NOT dump raw calculation tables or focus narrowly on one worked example.\n"
+            )
 
     user_prompt = f"""{plan_str}CONTEXT:
 {context_str}
