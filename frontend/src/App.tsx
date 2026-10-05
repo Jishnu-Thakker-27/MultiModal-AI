@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { ScreenType } from './types';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
-import { WelcomeScreen } from './components/WelcomeScreen';
-import { TutorWorkspace } from './components/TutorWorkspace';
-import { AdaptiveQuizzes } from './components/AdaptiveQuizzes';
-import { LearningAnalytics } from './components/LearningAnalytics';
-import { LibrarySources } from './components/LibrarySources';
+import { LoginPage } from './pages/LoginPage';
+import { TutorPage } from './pages/TutorPage';
+import { QuizzesPage } from './pages/QuizzesPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
+import { LibraryPage } from './pages/LibraryPage';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
@@ -101,7 +101,7 @@ export default function App() {
       {/* Main Studio Viewport */}
       <main className="w-full flex-1 px-3 sm:px-6 lg:px-8 max-w-7xl mx-auto py-6 sm:py-8 flex flex-col justify-center">
         {!isLoggedIn || currentScreen === 'welcome' ? (
-          <WelcomeScreen
+          <LoginPage
             onStartLearning={handleLogin}
             onExploreGuest={handleLogin}
             tactileAssistActive={tactileAssistActive}
@@ -110,28 +110,28 @@ export default function App() {
         ) : (
           <>
             {currentScreen === 'tutor-workspace' && (
-              <TutorWorkspace
+              <TutorPage
                 onNavigateToQuiz={() => handleNavigate('adaptive-quizzes')}
                 onNavigateToSources={() => handleNavigate('library-and-sources')}
               />
             )}
 
             {currentScreen === 'adaptive-quizzes' && (
-              <AdaptiveQuizzes
+              <QuizzesPage
                 onBackToWorkspace={() => handleNavigate('tutor-workspace')}
                 onNavigateToSources={() => handleNavigate('library-and-sources')}
               />
             )}
 
             {currentScreen === 'learning-analytics' && (
-              <LearningAnalytics
+              <AnalyticsPage
                 onResumeSession={() => handleNavigate('tutor-workspace')}
                 onDrillTopic={() => handleNavigate('adaptive-quizzes')}
               />
             )}
 
             {currentScreen === 'library-and-sources' && (
-              <LibrarySources
+              <LibraryPage
                 onStartInquiry={() => handleNavigate('tutor-workspace')}
                 onGenerateQuiz={() => handleNavigate('adaptive-quizzes')}
               />
@@ -156,7 +156,7 @@ export default function App() {
           aria-modal="true"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in"
         >
-          <div className="w-full max-w-lg p-6 sm:p-8 rounded-[2rem] bg-white border border-[#ede7df] shadow-2xl flex flex-col gap-4 text-left">
+          <div className="w-full max-w-lg p-6 sm:p-8 rounded-4xl bg-white border border-[#ede7df] shadow-2xl flex flex-col gap-4 text-left">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-[#f9f3eb] flex items-center justify-center text-[#745948]">

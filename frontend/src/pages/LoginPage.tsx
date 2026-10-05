@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ScreenType } from '../types';
-import { brandLogoUrl, currentUser } from '../data/mockData';
+
 
 interface WelcomeScreenProps {
   onStartLearning: () => void;
@@ -9,7 +9,7 @@ interface WelcomeScreenProps {
   onToggleTactileAssist: () => void;
 }
 
-export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
+export const LoginPage: React.FC<WelcomeScreenProps> = ({
   onStartLearning,
   onExploreGuest,
   tactileAssistActive,
@@ -28,17 +28,17 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   return (
     <div className="w-full flex items-center justify-center p-4 sm:p-6 lg:p-10 transition-colors selection:bg-[#f3cfba] selection:text-[#725746]">
       {/* Outer Ceramic Shell Card */}
-      <div className="w-full max-w-6xl rounded-[2.5rem] bg-white shadow-[0_30px_70px_-15px_rgba(195,180,170,0.35),inset_0_2px_4px_rgba(255,255,255,0.95)] border border-[#ede7df]/80 p-6 lg:p-12 overflow-hidden">
+      <div className="w-full max-w-6xl rounded-4xl bg-white shadow-[0_30px_70px_-15px_rgba(195,180,170,0.35),inset_0_2px_4px_rgba(255,255,255,0.95)] border border-[#ede7df]/80 p-6 lg:p-12 overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
           
           {/* LEFT COLUMN: Atelier Socratic Hero & Testimonial Plate */}
-          <div className="lg:col-span-5 rounded-[2rem] bg-[#f9f3eb] p-8 flex flex-col justify-between shadow-[inset_0_2px_4px_rgba(255,255,255,0.9),0_6px_16px_rgba(180,165,150,0.18)] border border-[#ede7df]/60">
+          <div className="lg:col-span-5 rounded-4xl bg-[#f9f3eb] p-8 flex flex-col justify-between shadow-[inset_0_2px_4px_rgba(255,255,255,0.9),0_6px_16px_rgba(180,165,150,0.18)] border border-[#ede7df]/60">
             <div className="flex flex-col gap-6">
               {/* Top Atelier Mark */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-2xl bg-white border border-[#ede7df]/60 flex items-center justify-center shadow-sm">
-                    <img alt="SocraticAI" className="h-6 w-auto" src={brandLogoUrl} />
+                    <img alt="SocraticAI" className="h-6 w-auto" src="/favicon.ico" />
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[25px] font-extrabold text-[#1d1b17] leading-tight">
@@ -223,14 +223,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               <div className="flex items-center gap-3">
                 <button type="button" className="hover:underline cursor-pointer">
                   Privacy Policy
-                </button>
-                <span>•</span>
-                <button
-                  type="button"
-                  onClick={onToggleTactileAssist}
-                  className="hover:underline cursor-pointer"
-                >
-                  Accessibility (WCAG AAA)
                 </button>
               </div>
             </div>

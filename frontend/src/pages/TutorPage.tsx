@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ScreenType } from '../types';
-import { currentUser } from '../data/mockData';
-import MarkdownRenderer from './common/MarkdownRenderer';
+
+import MarkdownRenderer from '../components/common/MarkdownRenderer';
 import {
   postConversationChat,
   createConversation,
   getConversations,
   getConversationDetails,
-  uploadSourceToConversation,
+  uploadSourceToConversation, deleteConversation, deleteDocument,
 } from '../services/api';
 
 interface TutorWorkspaceProps {
@@ -41,7 +41,7 @@ interface ConversationItem {
   updated_at?: string;
 }
 
-export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
+export const TutorPage: React.FC<TutorWorkspaceProps> = ({
   onNavigateToQuiz,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -122,7 +122,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
     }
   };
 
-  const handleCreateNewInquiry = async () => {
+  const handleDeleteConversation = async (convId: string, e: React.MouseEvent) => { e.stopPropagation(); if (!confirm('Delete this inquiry session?')) return; try { await deleteConversation(convId); if (activeConvId === convId) { setActiveConvId(null); setMessages([]); setActiveSources([]); } loadConversations(); } catch (err: any) { alert(err?.message || 'Delete error'); } }; const handleDeleteSource = async (docId: string, e: React.MouseEvent) => { e.stopPropagation(); if (!confirm('Remove this source document?')) return; try { await deleteDocument(docId); if (activeConvId) { const details = await getConversationDetails(activeConvId); if (details?.sources) setActiveSources(details.sources); } } catch (err: any) { alert(err?.message || 'Delete error'); } }; const handleCreateNewInquiry = async () => {
     try {
       const newConv = await createConversation({
         title: 'New Socratic Inquiry',
@@ -270,7 +270,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
       }
 
       const res = await postConversationChat(convId, userText);
-      const answerText = res?.answer || res?.content || (typeof res === 'string' ? res : '');
+      const lastMessage = res?.messages?.slice(-1)[0]; const answerText = res?.answer || res?.content || lastMessage?.content || (typeof res === 'string' ? res : '');
 
       if (answerText) {
         const guideMsg: ChatMessage = {
@@ -296,7 +296,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
           .then((details) => {
             if (details?.sources) setActiveSources(details.sources);
           })
-          .catch(() => {});
+          .catch(() => { });
         loadConversations();
       }
     } catch {
@@ -327,20 +327,20 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
     <div className="w-full pb-16">
       {/* Main 2-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
+
         {/* LEFT COLUMN: Sidebar (New Inquiry, Context Sources, Dialogues, Cognitive Fatigue Gauge) */}
         <div className="lg:col-span-4 flex flex-col gap-5">
-          
+
           {/* New Learning Inquiry Button */}
           <button
             onClick={handleCreateNewInquiry}
-            className="w-full py-3.5 px-5 rounded-[1.5rem] bg-[#f3cfba] hover:bg-[#fadfd0] text-[#725746] font-bold text-[14px] shadow-[0_8px_18px_-2px_rgba(215,175,155,0.5),inset_0_1.5px_1px_rgba(255,255,255,0.8)] flex items-center justify-between transition-all cursor-pointer"
+            className="w-full py-3.5 px-5 rounded-3xl bg-[#f3cfba] hover:bg-[#fadfd0] text-[#725746] font-bold text-[14px] shadow-[0_8px_18px_-2px_rgba(215,175,155,0.5),inset_0_1.5px_1px_rgba(255,255,255,0.8)] flex items-center justify-between transition-all cursor-pointer"
           >
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-[18px]">add</span>
               <span>New Learning Inquiry</span>
             </div>
-            <span className="px-2 py-0.5 rounded-lg bg-black/10 text-[11px] font-mono">⌘K</span>
+            <span className="px-2 py-0.5 rounded-lg bg-black/10 text-[11px] font-mono">G??K</span>
           </button>
 
           {/* Search Input Box */}
@@ -361,7 +361,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
           </div>
 
           {/* Active Context Sources Container */}
-          <div className="p-5 rounded-[2rem] bg-white shadow-[0_16px_32px_-8px_rgba(195,180,170,0.25)] border border-[#ede7df]/80 flex flex-col gap-3">
+          <div className="p-5 rounded-4xl bg-white shadow-[0_16px_32px_-8px_rgba(195,180,170,0.25)] border border-[#ede7df]/80 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="text-[12px] font-bold uppercase tracking-wider text-[#4f453f] flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-[#f3cfba]"></span>
@@ -386,17 +386,17 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                   const icon = isPdf
                     ? 'menu_book'
                     : isPpt
-                    ? 'slideshow'
-                    : isVideo
-                    ? 'smart_display'
-                    : 'description';
+                      ? 'slideshow'
+                      : isVideo
+                        ? 'smart_display'
+                        : 'description';
                   const badgeColor = isPdf
                     ? 'bg-[#c0ddd0]/60 text-[#486258]'
                     : isPpt
-                    ? 'bg-[#f3cfba]/60 text-[#725746]'
-                    : isVideo
-                    ? 'bg-[#cbe3f6]/60 text-[#4f6576]'
-                    : 'bg-[#ede7df] text-[#4f453f]';
+                      ? 'bg-[#f3cfba]/60 text-[#725746]'
+                      : isVideo
+                        ? 'bg-[#cbe3f6]/60 text-[#4f6576]'
+                        : 'bg-[#ede7df] text-[#4f453f]';
 
                   return (
                     <div
@@ -414,7 +414,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                             {source.title}
                           </span>
                           <span className="text-[11px] text-[#4f453f] truncate">
-                            {source.source_type ? `${source.source_type.toUpperCase()} • Grounded` : 'Active Context'}
+                            {source.source_type ? `${source.source_type.toUpperCase()} G?? Grounded` : 'Active Context'}
                           </span>
                         </div>
                       </div>
@@ -430,7 +430,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                   <span className="text-[12px] font-semibold text-[#1d1b17]">
                     No sources attached to this session
                   </span>
-                  <span className="text-[11px] text-[#81756e] max-w-[220px]">
+                  <span className="text-[11px] text-[#81756e] max-w-55">
                     Import PDFs, slides, lecture MP4 videos, or web links to ground the RAG knowledge graph in your material.
                   </span>
                 </div>
@@ -457,7 +457,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
           </div>
 
           {/* Socratic Dialogues History */}
-          <div className="p-5 rounded-[2rem] bg-white shadow-[0_16px_32px_-8px_rgba(195,180,170,0.25)] border border-[#ede7df]/80 flex flex-col gap-3">
+          <div className="p-5 rounded-4xl bg-white shadow-[0_16px_32px_-8px_rgba(195,180,170,0.25)] border border-[#ede7df]/80 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="text-[12px] font-bold uppercase tracking-wider text-[#4f453f]">
                 Socratic Dialogues
@@ -473,11 +473,10 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                     <div
                       key={conv.id}
                       onClick={() => selectConversation(conv.id)}
-                      className={`p-2.5 rounded-xl flex items-center justify-between cursor-pointer transition-colors ${
-                        isActive
+                      className={`p-2.5 rounded-xl flex items-center justify-between cursor-pointer transition-colors ${isActive
                           ? 'bg-[#f3cfba]/30 border border-[#f3cfba]/70'
                           : 'hover:bg-[#f9f3eb]'
-                      }`}
+                        }`}
                     >
                       <div className="flex flex-col min-w-0 pr-2">
                         <span className="text-[12px] font-bold text-[#1d1b17] truncate">
@@ -485,13 +484,12 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                         </span>
                         <span className="text-[10px] text-[#745948] truncate">
                           {conv.topic_name || 'General'}
-                          {conv.message_count !== undefined ? ` • ${conv.message_count} messages` : ''}
+                          {conv.message_count !== undefined ? ` G?? ${conv.message_count} messages` : ''}
                         </span>
                       </div>
                       <span
-                        className={`material-symbols-outlined text-[16px] shrink-0 ${
-                          isActive ? 'text-[#745948]' : 'text-[#81756e]'
-                        }`}
+                        className={`material-symbols-outlined text-[16px] shrink-0 ${isActive ? 'text-[#745948]' : 'text-[#81756e]'
+                          }`}
                       >
                         chevron_right
                       </span>
@@ -507,7 +505,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
           </div>
 
           {/* Cognitive Fatigue Gauge */}
-          <div className="p-5 rounded-[2rem] bg-white shadow-[0_16px_32px_-8px_rgba(195,180,170,0.25)] border border-[#ede7df]/80 flex items-center justify-between">
+          <div className="p-5 rounded-4xl bg-white shadow-[0_16px_32px_-8px_rgba(195,180,170,0.25)] border border-[#ede7df]/80 flex items-center justify-between">
             <div className="flex flex-col">
               <span className="text-[11px] font-bold text-[#81756e] uppercase tracking-wider">
                 Cognitive Fatigue
@@ -542,8 +540,8 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
 
         {/* RIGHT COLUMN: Interactive Dialogue Area (Center Canvas) */}
         <div className="lg:col-span-8 flex flex-col gap-6">
-          <div className="w-full p-6 sm:p-8 rounded-[2rem] bg-white shadow-[0_22px_44px_-12px_rgba(195,180,170,0.32),inset_0_2px_4px_rgba(255,255,255,0.95)] border border-[#ede7df]/80 flex flex-col gap-6">
-            
+          <div className="w-full p-6 sm:p-8 rounded-4xl bg-white shadow-[0_22px_44px_-12px_rgba(195,180,170,0.32),inset_0_2px_4px_rgba(255,255,255,0.95)] border border-[#ede7df]/80 flex flex-col gap-6">
+
             {/* Inquiry Header */}
             <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#ede7df]">
               <div className="flex flex-col gap-1 min-w-0">
@@ -551,7 +549,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                   <span className="px-2 py-0.5 rounded-full bg-[#ede7df] text-[10px] text-[#1d1b17]">
                     {activeTopic}
                   </span>
-                  <span>• Socratic Tutoring Session</span>
+                  <span>G?? Socratic Tutoring Session</span>
                   {activeSources.length > 0 && (
                     <span className="px-2 py-0.5 rounded-full bg-[#c0ddd0] text-[#052018] text-[10px] font-bold">
                       {activeSources.length} Source{activeSources.length > 1 ? 's' : ''} Grounded
@@ -580,7 +578,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
             </div>
 
             {/* Conversation Stream */}
-            <div className="flex flex-col gap-6 min-h-[300px]">
+            <div className="flex flex-col gap-6 min-h-75">
               {messages.length === 0 ? (
                 <div className="p-8 rounded-2xl bg-[#f9f3eb]/60 border border-dashed border-[#ede7df] flex flex-col items-center justify-center text-center gap-3 my-auto">
                   <div className="w-12 h-12 rounded-2xl bg-[#f3cfba] text-[#725746] flex items-center justify-center shadow-sm">
@@ -596,7 +594,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                   </div>
                   <div className="flex flex-wrap gap-2 justify-center pt-2">
                     {[
-                      'Explain Simpson’s 1/3 rule intuitively',
+                      'Explain SimpsonG??s 1/3 rule intuitively',
                       'Derive the Newton-Raphson convergence rate',
                       'Why does backpropagation calculate derivatives backwards?',
                     ].map((example) => (
@@ -622,12 +620,12 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                         {msg.sender === 'user' ? (
                           <>
                             <img
-                              alt={currentUser.name}
-                              src={currentUser.avatarUrl}
+                              alt={'Socratic Scholar'}
+                              src={'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80'}
                               className="w-8 h-8 rounded-full object-cover shadow-sm"
                             />
                             <span className="text-[13px] font-bold text-[#1d1b17]">
-                              {currentUser.name}
+                              {'Socratic Scholar'}
                             </span>
                           </>
                         ) : (
@@ -648,11 +646,10 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                     </div>
 
                     <div
-                      className={`p-5 rounded-2xl leading-relaxed ${
-                        msg.sender === 'user'
+                      className={`p-5 rounded-2xl leading-relaxed ${msg.sender === 'user'
                           ? 'bg-[#f9f3eb] text-[#1d1b17] text-[14px] shadow-[0_2px_6px_rgba(180,165,150,0.15)]'
                           : 'bg-white border border-[#ede7df] text-[14px] text-[#1d1b17] shadow-[0_6px_16px_rgba(190,175,160,0.18)]'
-                      }`}
+                        }`}
                     >
                       {msg.sender === 'socratic-guide' ? (
                         <div className="flex flex-col gap-3">
@@ -676,8 +673,8 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                                     <span className="font-semibold text-[#1d1b17]">
                                       {cite.document_title || cite.source || 'Course Material'}
                                     </span>
-                                    {cite.page && <span>• p. {cite.page}</span>}
-                                    {cite.section && <span>• §{cite.section}</span>}
+                                    {cite.page && <span>G?? p. {cite.page}</span>}
+                                    {cite.section && <span>G?? -?{cite.section}</span>}
                                   </div>
                                 ))}
                               </div>
@@ -748,9 +745,8 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsRecordingMic(!isRecordingMic)}
-                    className={`absolute right-4 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
-                      isRecordingMic ? 'bg-[#ba1a1a] text-white animate-pulse' : 'text-[#81756e] hover:text-[#1d1b17]'
-                    }`}
+                    className={`absolute right-4 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${isRecordingMic ? 'bg-[#ba1a1a] text-white animate-pulse' : 'text-[#81756e] hover:text-[#1d1b17]'
+                      }`}
                     title="Speak question via mic"
                   >
                     <span className="material-symbols-outlined text-[19px]">mic</span>
@@ -794,7 +790,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
       {/* MODAL 1: Device File Upload Modal */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-[2rem] bg-white p-6 sm:p-8 shadow-2xl flex flex-col gap-5 border border-[#ede7df]">
+          <div className="w-full max-w-lg rounded-4xl bg-white p-6 sm:p-8 shadow-2xl flex flex-col gap-5 border border-[#ede7df]">
             <div className="flex items-center justify-between">
               <span className="text-[17px] font-bold text-[#1d1b17] flex items-center gap-2">
                 <span className="material-symbols-outlined text-[22px] text-[#745948]">upload_file</span>
@@ -850,7 +846,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                 </span>
                 <span className="text-[11px] text-[#81756e]">
                   {selectedFile
-                    ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to process`
+                    ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB G?? Ready to process`
                     : 'Select any PDF textbook, slide deck, or lecture video'}
                 </span>
               </div>
@@ -886,11 +882,10 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
                 type="button"
                 disabled={!selectedFile || isUploading}
                 onClick={() => handleFileUpload()}
-                className={`px-5 py-2.5 rounded-full font-bold text-[13px] shadow-md flex items-center gap-2 transition-all cursor-pointer ${
-                  !selectedFile || isUploading
+                className={`px-5 py-2.5 rounded-full font-bold text-[13px] shadow-md flex items-center gap-2 transition-all cursor-pointer ${!selectedFile || isUploading
                     ? 'bg-[#ede7df] text-[#81756e] cursor-not-allowed'
                     : 'bg-[#745948] hover:bg-[#5a4132] text-white shadow-[0_4px_12px_rgba(116,89,72,0.35)]'
-                }`}
+                  }`}
               >
                 {isUploading ? (
                   <>
@@ -912,7 +907,7 @@ export const TutorWorkspace: React.FC<TutorWorkspaceProps> = ({
       {/* MODAL 2: Attach Link / Video URL Modal */}
       {showLinkModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-[2rem] bg-white p-6 sm:p-8 shadow-2xl flex flex-col gap-5 border border-[#ede7df]">
+          <div className="w-full max-w-lg rounded-4xl bg-white p-6 sm:p-8 shadow-2xl flex flex-col gap-5 border border-[#ede7df]">
             <div className="flex items-center justify-between">
               <span className="text-[17px] font-bold text-[#1d1b17] flex items-center gap-2">
                 <span className="material-symbols-outlined text-[22px] text-[#745948]">link</span>
