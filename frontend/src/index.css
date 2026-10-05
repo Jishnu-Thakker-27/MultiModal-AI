@@ -72,3 +72,19 @@ body {
   background-color: var(--card-high);
   box-shadow: inset 0 1.5px 2px rgba(255, 255, 255, 0.9), 0 2px 4px rgba(184, 169, 156, 0.2);
 }
+
+/* KaTeX mathematical formulas & arrays */
+.markdown-content .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.6rem 0;
+  margin: 0.75rem 0;
+}
+
+.markdown-content .katex-display::-webkit-scrollbar {
+  height: 4px;
+}
+
+.markdown-content .katex {
+  font-size: 1.05em;
+}

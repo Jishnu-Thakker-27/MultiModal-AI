@@ -549,7 +549,7 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                   <span className="px-2 py-0.5 rounded-full bg-[#ede7df] text-[10px] text-[#1d1b17]">
                     {activeTopic}
                   </span>
-                  <span>G?? Socratic Tutoring Session</span>
+                  <span>• Socratic Tutoring Session</span>
                   {activeSources.length > 0 && (
                     <span className="px-2 py-0.5 rounded-full bg-[#c0ddd0] text-[#052018] text-[10px] font-bold">
                       {activeSources.length} Source{activeSources.length > 1 ? 's' : ''} Grounded
@@ -594,7 +594,7 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                   </div>
                   <div className="flex flex-wrap gap-2 justify-center pt-2">
                     {[
-                      'Explain SimpsonG??s 1/3 rule intuitively',
+                      'Explain Simpson’s 1/3 rule intuitively',
                       'Derive the Newton-Raphson convergence rate',
                       'Why does backpropagation calculate derivatives backwards?',
                     ].map((example) => (
@@ -673,8 +673,8 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                                     <span className="font-semibold text-[#1d1b17]">
                                       {cite.document_title || cite.source || 'Course Material'}
                                     </span>
-                                    {cite.page && <span>G?? p. {cite.page}</span>}
-                                    {cite.section && <span>G?? -?{cite.section}</span>}
+                                    {cite.page && <span>• p. {cite.page}</span>}
+                                    {cite.section && <span>• §{cite.section}</span>}
                                   </div>
                                 ))}
                               </div>
