@@ -68,7 +68,11 @@ class GraphManager:
         self,
         source_concept_id: str,
         target_concept_id: str,
-        relationship_type: str = "prerequisite_of"
+        relationship_type: str = "prerequisite_of",
+        provenance_doc_id: Optional[str] = None,
+        page_number: Optional[int] = None,
+        source_chunk_id: Optional[str] = None,
+        confidence: float = 1.0
     ) -> Optional[ConceptRelationship]:
         if source_concept_id == target_concept_id:
             return None
@@ -80,12 +84,25 @@ class GraphManager:
         ).first()
 
         if existing:
+            # Update provenance if previously missing
+            if provenance_doc_id and not existing.provenance_doc_id:
+                existing.provenance_doc_id = provenance_doc_id
+            if page_number and not existing.page_number:
+                existing.page_number = page_number
+            if source_chunk_id and not existing.source_chunk_id:
+                existing.source_chunk_id = source_chunk_id
+            self.db.commit()
+            self.db.refresh(existing)
             return existing
 
         rel = ConceptRelationship(
             source_concept_id=source_concept_id,
             target_concept_id=target_concept_id,
-            relationship_type=relationship_type
+            relationship_type=relationship_type,
+            provenance_doc_id=provenance_doc_id,
+            page_number=page_number,
+            source_chunk_id=source_chunk_id,
+            confidence=confidence
         )
         self.db.add(rel)
         self.db.commit()
@@ -98,7 +115,7 @@ class GraphManager:
         """
         rels = self.db.query(ConceptRelationship).filter(
             ConceptRelationship.target_concept_id == concept_id,
-            ConceptRelationship.relationship_type.in_(["prerequisite_of", "follows", "part_of"])
+            ConceptRelationship.relationship_type.in_(["prerequisite_of", "follows", "part_of", "depends_on"])
         ).all()
 
         prereq_ids = [r.source_concept_id for r in rels]
@@ -106,6 +123,94 @@ class GraphManager:
             return []
 
         return self.db.query(ConceptGraphNode).filter(ConceptGraphNode.id.in_(prereq_ids)).order_by(ConceptGraphNode.document_order.asc()).all()
+
+    def get_related_graph_neighborhood(
+        self,
+        concept_id: str,
+        max_hops: int = 1
+    ) -> Dict[str, Any]:
+        """
+        Traverses bounded 1-to-2 hop conceptual neighborhood around a target node.
+        Returns:
+            - target_node
+            - prerequisites (incoming prerequisite/depends_on)
+            - parent_containers (part_of, contains)
+            - related_concepts (related_to, follows)
+            - chunk_ids (direct and 1-hop connected chunk IDs)
+        """
+        target = self.db.query(ConceptGraphNode).filter(ConceptGraphNode.id == concept_id).first()
+        if not target:
+            return {
+                "target_node": None,
+                "prerequisites": [],
+                "parents": [],
+                "related": [],
+                "connected_chunk_ids": []
+            }
+
+        # 1-Hop incoming relationships
+        incoming_rels = self.db.query(ConceptRelationship).filter(
+            ConceptRelationship.target_concept_id == concept_id
+        ).all()
+
+        # 1-Hop outgoing relationships
+        outgoing_rels = self.db.query(ConceptRelationship).filter(
+            ConceptRelationship.source_concept_id == concept_id
+        ).all()
+
+        prereq_ids = set()
+        parent_ids = set()
+        related_ids = set()
+        chunk_ids = set()
+
+        for r in incoming_rels:
+            if r.source_chunk_id:
+                chunk_ids.add(r.source_chunk_id)
+            if r.relationship_type in ["prerequisite_of", "depends_on"]:
+                prereq_ids.add(r.source_concept_id)
+            elif r.relationship_type in ["contains", "part_of"]:
+                parent_ids.add(r.source_concept_id)
+            else:
+                related_ids.add(r.source_concept_id)
+
+        for r in outgoing_rels:
+            if r.source_chunk_id:
+                chunk_ids.add(r.source_chunk_id)
+            if r.relationship_type in ["contains", "part_of"]:
+                parent_ids.add(r.target_concept_id)
+            elif r.relationship_type in ["prerequisite_of"]:
+                related_ids.add(r.target_concept_id)
+            else:
+                related_ids.add(r.target_concept_id)
+
+        # Pull chunks directly indexed by target node
+        direct_chunks = self.db.query(DocumentChunk).filter(
+            DocumentChunk.concept_node_id == concept_id
+        ).all()
+        for dc in direct_chunks:
+            chunk_ids.add(dc.id)
+
+        all_node_ids = list(prereq_ids | parent_ids | related_ids)
+        neighbor_nodes = {}
+        if all_node_ids:
+            nodes = self.db.query(ConceptGraphNode).filter(ConceptGraphNode.id.in_(all_node_ids)).all()
+            neighbor_nodes = {n.id: n for n in nodes}
+
+        # Also pull chunks linked to 1-hop prerequisites
+        if prereq_ids:
+            prereq_chunks = self.db.query(DocumentChunk).filter(
+                DocumentChunk.concept_node_id.in_(list(prereq_ids))
+            ).all()
+            for pc in prereq_chunks:
+                chunk_ids.add(pc.id)
+
+        return {
+            "target_node": target,
+            "prerequisites": [neighbor_nodes[pid] for pid in prereq_ids if pid in neighbor_nodes],
+            "parents": [neighbor_nodes[pid] for pid in parent_ids if pid in neighbor_nodes],
+            "related": [neighbor_nodes[rid] for rid in related_ids if rid in neighbor_nodes],
+            "connected_chunk_ids": list(chunk_ids)
+        }
 
     def find_concept_by_name(self, course_id: str, query: str) -> Optional[ConceptGraphNode]:
         norm_query = query.strip().lower()

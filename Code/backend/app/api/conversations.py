@@ -88,7 +88,7 @@ def create_conversation(
         if not payload.title:
             repo.update_conversation(conv.id, title=question[:40] + ("..." if len(question)>40 else ""))
 
-        intent_info = classify_learning_intent(question)
+        learner_profile = repo.get_learner_profile(user_id=user_id, course_id=conv.course_id)
         if intent_info["intent"] in {"OVERVIEW", "DOCUMENT_SUMMARY"}:
             retrieved_chunks = retrieve_document_summary_chunks(db, conversation_id=conv.id, top_k=8)
             docs = repo.get_conversation_documents(conv.id)
@@ -96,19 +96,21 @@ def create_conversation(
             if docs and docs[0].title:
                 clean_title = re.sub(r'\.(pdf|pptx|docx|txt)$', '', docs[0].title, flags=re.I)
                 doc_title = re.sub(r'[-_–]', ' ', clean_title).strip()
-            pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO"}
+            pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO", "learner_profile": learner_profile}
             teaching_plan = {"target_name": doc_title, "coverage_state": "STATE_C_SUFFICIENT_INFO", "teaching_stage": "DOCUMENT_OVERVIEW", "is_document_summary": True}
         else:
             pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
                 course_id=conv.course_id or "default_course", user_id=user_id, query=question,
                 intent=intent_info["intent"], conversation_id=conv.id
             )
+            pedagogical_context["learner_profile"] = learner_profile
             retrieved_chunks = retrieve_hierarchical_chunks(
                 db=db, query=question, target_name=pedagogical_context.get("target_name"),
                 conversation_id=conv.id, course_id=conv.course_id, intent=intent_info["intent"],
                 query_scope=intent_info.get("query_scope", "FOCUSED"), target_concept=pedagogical_context.get("target_concept"),
                 prerequisite_nodes=pedagogical_context.get("prerequisites"),
-                is_introductory=pedagogical_context.get("is_introductory_request", True), top_k=5
+                is_introductory=pedagogical_context.get("is_introductory_request", True), top_k=5,
+                user_id=user_id, learner_profile=learner_profile
             )
             teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks)
         raw_answer, citations, is_grounded = generate_grounded_answer(question, retrieved_chunks, teaching_plan)
@@ -225,6 +227,8 @@ def chat_in_conversation(
     # 1. Intent Classification
     intent_info = classify_learning_intent(question)
 
+    learner_profile = repo.get_learner_profile(user_id=user_id, course_id=conv.course_id)
+
     # 2. Generalized Target & 3-State Coverage Resolution (Strictly scoped to this conversation's attached sources!)
     if intent_info["intent"] in {"OVERVIEW", "DOCUMENT_SUMMARY"}:
         docs = repo.get_conversation_documents(conversation_id)
@@ -232,7 +236,7 @@ def chat_in_conversation(
         if docs and docs[0].title:
             clean_title = re.sub(r'\.(pdf|pptx|docx|txt)$', '', docs[0].title, flags=re.I)
             doc_title = re.sub(r'[-_–]', ' ', clean_title).strip()
-        pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO"}
+        pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO", "learner_profile": learner_profile}
         retrieved_chunks = retrieve_document_summary_chunks(db, conversation_id=conversation_id, top_k=8)
         teaching_plan = {"target_name": doc_title, "coverage_state": "STATE_C_SUFFICIENT_INFO", "teaching_stage": "DOCUMENT_OVERVIEW", "is_document_summary": True}
     else:
@@ -240,12 +244,14 @@ def chat_in_conversation(
             course_id=conv.course_id or "default_course", user_id=user_id, query=question,
             intent=intent_info["intent"], conversation_id=conversation_id, conversation_history=messages
         )
+        pedagogical_context["learner_profile"] = learner_profile
         retrieved_chunks = retrieve_hierarchical_chunks(
             db=db, query=question, target_name=pedagogical_context.get("target_name"),
             conversation_id=conversation_id, course_id=conv.course_id, intent=intent_info["intent"],
             query_scope=intent_info.get("query_scope", "FOCUSED"), target_concept=pedagogical_context.get("target_concept"),
             prerequisite_nodes=pedagogical_context.get("prerequisites"),
-            is_introductory=pedagogical_context.get("is_introductory_request", True), top_k=5
+            is_introductory=pedagogical_context.get("is_introductory_request", True), top_k=5,
+            user_id=user_id, learner_profile=learner_profile
         )
         teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks)
 
@@ -258,10 +264,19 @@ def chat_in_conversation(
     # 7. Save Message History
     repo.save_chat_messages(conversation_id, question, answer, citations)
 
-    # 8. Update Student Concept Mastery
+    # 8. Update Student Concept Mastery & Track Learner Misconceptions
     target_node = pedagogical_context.get("target_concept")
     if target_node:
-        GraphManager(db).update_student_concept_mastery(user_id, target_node.id, delta=0.2)
+        confusion_signals = ["confused", "don't understand", "do not understand", "unclear", "explain again", "still stuck"]
+        if any(w in question.lower() for w in confusion_signals):
+            repo.record_misconception(
+                user_id=user_id,
+                concept_id=target_node.id,
+                misconception_text=f"Struggling with concept '{target_node.name}': {question[:120]}",
+                severity="moderate"
+            )
+        else:
+            GraphManager(db).update_student_concept_mastery(user_id, target_node.id, delta=0.2)
 
     debug_info = None
     if debug:
@@ -331,7 +346,7 @@ def upload_source_to_conversation(
         source_type = "pdf"
     elif ext in ["pptx", "ppt"]:
         source_type = "pptx"
-    elif ext in ["mp4", "mov", "avi", "mkv"]:
+    elif ext in ["mp4", "mov", "avi", "mkv", "webm", "m4v", "mp3", "wav", "m4a"]:
         source_type = "video"
     else:
         source_type = "pdf"
@@ -346,7 +361,7 @@ def upload_source_to_conversation(
     extracted = []
     try:
         if source_type == "pdf":
-            extracted = extract_pdf_content(file_path)
+            extracted = extract_pdf_content(file_path, course_id=course_id, doc_id=doc.id)
         elif source_type == "pptx":
             extracted = extract_pptx_content(file_path)
         elif source_type == "video":

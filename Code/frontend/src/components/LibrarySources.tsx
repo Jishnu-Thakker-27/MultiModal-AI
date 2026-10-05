@@ -53,15 +53,7 @@ export const LibrarySources: React.FC<LibrarySourcesProps> = ({
               </span>
             </div>
 
-            <button
-              onClick={() => setShowAttachModal(true)}
-              className="px-5 py-2.5 rounded-full bg-[#745948] hover:bg-[#5a4132] text-white font-bold text-[13px] shadow-[0_6px_16px_rgba(116,89,72,0.35)] flex items-center gap-2 cursor-pointer transition-all"
-            >
-              <span className="material-symbols-outlined text-[18px]">add_circle</span>
-              <span>Attach New Study Source</span>
-            </button>
           </div>
-
           <div className="flex flex-col gap-1">
             <h1 className="text-[28px] sm:text-[32px] font-bold text-[#1d1b17]  tracking-tight">
               Multimodal Knowledge Vault

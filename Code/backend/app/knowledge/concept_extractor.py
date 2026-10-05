@@ -74,25 +74,50 @@ def extract_and_build_concept_graph(
                     )
                     created_nodes.append(node)
 
-    # Link sequential prerequisite relationships based on document structure & concept hierarchy
+    # Link sequential prerequisite and container relationships with exact provenance
     definitions = [n for n in created_nodes if n.concept_type in ["definition", "principle"]]
     operations = [n for n in created_nodes if n.concept_type == "operation"]
     algorithms = [n for n in created_nodes if n.concept_type in ["algorithm", "application"]]
+    formulas = [n for n in created_nodes if n.concept_type == "formula"]
 
+    # 1. Definitions are prerequisites of operations
     for d_node in definitions:
         for op_node in operations:
             if op_node.document_order >= d_node.document_order:
-                graph_mgr.add_relationship(d_node.id, op_node.id, "prerequisite_of")
+                graph_mgr.add_relationship(
+                    source_concept_id=d_node.id,
+                    target_concept_id=op_node.id,
+                    relationship_type="prerequisite_of",
+                    provenance_doc_id=document_id,
+                    page_number=op_node.page_number or d_node.page_number,
+                    confidence=0.9
+                )
 
+    # 2. Operations are prerequisites of algorithms
     for op_node in operations:
         for alg_node in algorithms:
             if alg_node.document_order >= op_node.document_order:
-                graph_mgr.add_relationship(op_node.id, alg_node.id, "prerequisite_of")
+                graph_mgr.add_relationship(
+                    source_concept_id=op_node.id,
+                    target_concept_id=alg_node.id,
+                    relationship_type="prerequisite_of",
+                    provenance_doc_id=document_id,
+                    page_number=alg_node.page_number or op_node.page_number,
+                    confidence=0.85
+                )
 
-    for d_node in definitions:
-        for alg_node in algorithms:
-            if alg_node.document_order > d_node.document_order:
-                graph_mgr.add_relationship(d_node.id, alg_node.id, "prerequisite_of")
+    # 3. Formulas explain or belong to operations/algorithms
+    for f_node in formulas:
+        for target_node in (operations + algorithms):
+            if abs(f_node.document_order - target_node.document_order) <= 1:
+                graph_mgr.add_relationship(
+                    source_concept_id=f_node.id,
+                    target_concept_id=target_node.id,
+                    relationship_type="explained_by",
+                    provenance_doc_id=document_id,
+                    page_number=f_node.page_number,
+                    confidence=0.95
+                )
 
-    logger.info(f"Generalized concept extractor built {len(created_nodes)} concept nodes for document {document_id}")
+    logger.info(f"Generalized concept extractor built {len(created_nodes)} concept nodes with provenance for document {document_id}")
     return created_nodes

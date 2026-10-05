@@ -81,7 +81,7 @@ def process_document(document_id: str, db: Session = Depends(get_db)):
     try:
         extracted = []
         if doc.source_type == "pdf":
-            extracted = extract_pdf_content(doc.file_path)
+            extracted = extract_pdf_content(doc.file_path, course_id=doc.course_id, doc_id=doc.id)
         elif doc.source_type == "pptx":
             extracted = extract_pptx_content(doc.file_path)
         elif doc.source_type == "video":

@@ -64,6 +64,10 @@ def chunk_extracted_content(
             current_chunks = [text]
 
         for idx, c_text in enumerate(current_chunks):
+            # Extract LaTeX formula if present in text
+            formula_match = re.search(r'(\$\$.*?\$\$|\\\[.*?\\\]|\\\(.*?\\\)|y\s*=\s*[^\n]+|I\s*=\s*[^\n]+)', c_text)
+            formula_latex = formula_match.group(0).strip() if formula_match else item.get("formula_latex")
+
             chunk_data = {
                 "document_id": document_id,
                 "course_id": course_id,
@@ -78,6 +82,8 @@ def chunk_extracted_content(
                 "heading": heading,
                 "section": section,
                 "page_type": page_type,
+                "visual_image_path": item.get("visual_image_path"),
+                "formula_latex": formula_latex,
                 "topic": item.get("topic") or section,
                 "subtopic": item.get("subtopic") or heading,
                 "concept": item.get("concept") or heading,

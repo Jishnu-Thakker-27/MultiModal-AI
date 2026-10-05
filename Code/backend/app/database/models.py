@@ -77,6 +77,11 @@ class DocumentChunk(Base):
     page_end = Column(Integer, nullable=True)
     page_type = Column(String(50), nullable=True, default="TEXT") # 'TEXT', 'VISUAL_MATHEMATICAL', 'SCANNED', 'COVER_METADATA'
     
+    # Multimodal artifact link & structured formula metadata
+    visual_image_path = Column(String(512), nullable=True)
+    formula_latex = Column(Text, nullable=True)
+    entity_ids = Column(JSON, nullable=True) # List of ConceptGraphNode IDs appearing in chunk
+    
     # Store embedding as JSON list of floats for maximum compatibility (SQLite & PostgreSQL)
     embedding = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -266,11 +271,19 @@ class ConceptRelationship(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     source_concept_id = Column(String(36), ForeignKey("concept_graph_nodes.id", ondelete="CASCADE"), nullable=False)
     target_concept_id = Column(String(36), ForeignKey("concept_graph_nodes.id", ondelete="CASCADE"), nullable=False)
-    relationship_type = Column(String(50), nullable=False) # 'prerequisite_of', 'part_of', 'example_of', 'application_of', 'follows'
+    relationship_type = Column(String(50), nullable=False) # 'prerequisite_of', 'contains', 'depends_on', 'related_to', 'part_of', 'example_of', 'explained_by', 'appears_in'
+    
+    # Exact Source Provenance for Knowledge Graph grounding
+    provenance_doc_id = Column(String(36), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
+    page_number = Column(Integer, nullable=True)
+    source_chunk_id = Column(String(36), ForeignKey("document_chunks.id", ondelete="SET NULL"), nullable=True)
+    confidence = Column(Float, default=1.0) # 0.0 to 1.0 confidence
     created_at = Column(DateTime, default=datetime.utcnow)
 
     source_concept = relationship("ConceptGraphNode", foreign_keys=[source_concept_id])
     target_concept = relationship("ConceptGraphNode", foreign_keys=[target_concept_id])
+    provenance_document = relationship("Document", foreign_keys=[provenance_doc_id])
+    provenance_chunk = relationship("DocumentChunk", foreign_keys=[source_chunk_id])
 
 
 class ConceptMastery(Base):
@@ -282,6 +295,23 @@ class ConceptMastery(Base):
     mastery_score = Column(Float, default=0.0) # 0.0 to 1.0
     exposure_count = Column(Integer, default=0)
     last_interaction_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    concept = relationship("ConceptGraphNode")
+
+
+class LearnerMisconception(Base):
+    __tablename__ = "learner_misconceptions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    concept_id = Column(String(36), ForeignKey("concept_graph_nodes.id", ondelete="CASCADE"), nullable=True)
+    misconception_text = Column(Text, nullable=False)
+    severity = Column(String(50), default="moderate") # 'minor', 'moderate', 'critical'
+    occurrence_count = Column(Integer, default=1)
+    is_resolved = Column(Boolean, default=False)
+    detected_at = Column(DateTime, default=datetime.utcnow)
+    last_addressed_at = Column(DateTime, nullable=True)
 
     user = relationship("User")
     concept = relationship("ConceptGraphNode")

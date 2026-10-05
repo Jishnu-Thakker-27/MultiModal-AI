@@ -80,6 +80,25 @@ class TeachingPlanner:
             teaching_stage = "DIRECT_EXPLANATION"
             concepts_to_cover = [f"Direct Explanation of {target_name}"]
 
+        # Learner Memory Scaffolding (Weak Topic Support & Misconception Remediation)
+        learner_profile = pedagogical_context.get("learner_profile") or {}
+        weak_topics = [wt.get("topic_name") if isinstance(wt, dict) else wt for wt in learner_profile.get("weak_topics", [])]
+        active_misconceptions = [m.get("text") if isinstance(m, dict) else m for m in learner_profile.get("active_misconceptions", [])]
+        is_target_weak = any(target_name.lower() in wt.lower() or wt.lower() in target_name.lower() for wt in weak_topics)
+
+        personalization_directives = []
+        if is_target_weak:
+            personalization_directives.append(
+                f"- LEARNER SCAFFOLDING NOTE: The student has shown lower historical mastery (<50%) in '{target_name}'. "
+                "Explain foundational prerequisites gently, use an intuitive sensory or structural analogy, and avoid assuming prior mastery."
+            )
+        if active_misconceptions:
+            misc_summary = "; ".join(active_misconceptions[:2])
+            personalization_directives.append(
+                f"- MISCONCEPTION REMEDIATION: The student previously struggled with: [{misc_summary}]. "
+                "Explicitly point out the correct conceptual intuition and address this common pitfall without being condescending."
+            )
+
         check_question = f"Would you like to solve a practice question on {target_name} or explore an example?"
 
         return {
@@ -92,5 +111,8 @@ class TeachingPlanner:
             "concepts_to_cover": concepts_to_cover,
             "retrieved_chunks": retrieved_chunks,
             "needs_bridge": needs_bridge,
-            "check_question": check_question
+            "check_question": check_question,
+            "personalization_directives": personalization_directives,
+            "is_target_weak": is_target_weak,
+            "active_misconceptions": active_misconceptions
         }

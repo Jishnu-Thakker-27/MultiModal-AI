@@ -39,11 +39,19 @@ def retrieve_hierarchical_chunks(
     prerequisite_nodes: Optional[List[ConceptGraphNode]] = None,
     is_introductory: bool = True,
     target_page: Optional[int] = None,
-    top_k: int = 5
+    top_k: int = 5,
+    user_id: Optional[str] = "demo_student",
+    learner_profile: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
-    Document-Wide Hybrid RAG Retriever with Neighboring Chunk Context Expansion
-    and Dynamic Query Scope Multi-Section Sampling (BROAD, FOCUSED, COMPARISON, FORMULA, EXAMPLE, VISUAL).
+    Memory-Aware Hybrid Multimodal Graph RAG Retriever.
+    Combines:
+    - Dense vector similarity (SentenceTransformers)
+    - Lexical keyword matching (BM25-style with concept root & alias normalization)
+    - Knowledge Graph neighborhood expansion (1-hop prerequisites, parent containers, related nodes)
+    - Learner Memory biasing (reinforcing student weak topics & addressing misconceptions)
+    - Multimodal artifact awareness (images, formulas, slides, videos)
+    - Section-level diversity sampling & neighboring chunk ($N+1$) context expansion.
     """
     repo = Repository(db)
     query_vector = generate_embedding(query)
@@ -78,7 +86,26 @@ def retrieve_hierarchical_chunks(
     search_terms = list(set([t for t in (target_clean + " " + target_root + " " + query.lower()).split() if len(t) > 2]))
 
     prereq_names = set([p.name.lower() for p in (prerequisite_nodes or [])])
-    target_node_id = target_concept.id if target_concept else None
+    # Knowledge Graph Neighborhood Lookup (1-hop traversal)
+    graph_connected_chunk_ids = set()
+    graph_prereq_chunk_ids = set()
+    graph_parent_chunk_ids = set()
+    if target_concept:
+        from app.knowledge.graph_manager import GraphManager
+        gm = GraphManager(db)
+        neighborhood = gm.get_related_graph_neighborhood(target_concept.id, max_hops=1)
+        graph_connected_chunk_ids = set(neighborhood.get("connected_chunk_ids", []))
+        for p in neighborhood.get("prerequisites", []):
+            prereq_names.add(p.name.lower())
+        for prt in neighborhood.get("parents", []):
+            prereq_names.add(prt.name.lower())
+
+    # Learner Memory State Extraction
+    if not learner_profile and user_id:
+        learner_profile = repo.get_learner_profile(user_id=user_id, course_id=course_id)
+    
+    weak_topic_names = set([w["topic_name"].lower() for w in (learner_profile.get("weak_topics", []) if learner_profile else [])])
+    active_misconceptions = [m["text"].lower() for m in (learner_profile.get("active_misconceptions", []) if learner_profile else [])]
 
     # Detect if query explicitly asks about cover page/syllabus/metadata
     q_lower = query.lower()
@@ -130,12 +157,37 @@ def retrieve_hierarchical_chunks(
             relevance_category = "EXACT_PAGE_TARGET"
             retrieval_reason = "exact_page_target"
 
-        # 5. Target Match Evaluation
+        # 5. Target & Knowledge Graph Match Evaluation
+        target_node_id = target_concept.id if target_concept else None
         is_target_match = False
+        is_graph_neighborhood_match = c.id in graph_connected_chunk_ids
+        
         if target_node_id and c.concept_node_id == target_node_id:
             is_target_match = True
         elif any(alias in content_lower or alias in content_norm for alias in target_aliases):
             is_target_match = True
+
+        graph_boost = 1.0
+        if is_graph_neighborhood_match and not is_target_match:
+            graph_boost = 1.6
+            relevance_category = "GRAPH_NEIGHBORHOOD"
+            retrieval_reason = "graph_neighborhood_relation"
+
+        # 6. Learner Memory Scoring (Weak Topic Reinforcement & Misconceptions)
+        memory_boost = 1.0
+        is_weak_topic_match = any(wt in content_lower for wt in weak_topic_names)
+        is_misconception_related = any(misc in content_lower for misc in active_misconceptions)
+        
+        if is_weak_topic_match:
+            memory_boost += 0.35
+            if relevance_category == "SUPPORTING_CONTEXT":
+                relevance_category = "LEARNER_WEAK_TOPIC"
+                retrieval_reason = "learner_weak_topic_support"
+
+        if is_misconception_related:
+            memory_boost += 0.45
+            relevance_category = "MISCONCEPTION_REMEDIATION"
+            retrieval_reason = "misconception_remediation"
 
         if is_target_match and not is_cover_chunk:
             relevance_category = "PRIMARY_TARGET"
@@ -146,17 +198,18 @@ def retrieve_hierarchical_chunks(
                 definition_boost = 2.0
                 retrieval_reason = "definition_match"
         elif any(p_name in content_lower for p_name in prereq_names):
-            relevance_category = "PREREQUISITE"
-            retrieval_reason = "prerequisite_context"
+            if relevance_category not in ["MISCONCEPTION_REMEDIATION", "LEARNER_WEAK_TOPIC"]:
+                relevance_category = "PREREQUISITE"
+                retrieval_reason = "prerequisite_context"
             target_multiplier = 1.5
 
-        # 6. Scope-Specific Multipliers (FORMULA, VISUAL, EXAMPLE)
+        # 7. Scope-Specific Multipliers (FORMULA, VISUAL, EXAMPLE)
         if query_scope == "FORMULA":
             if any(f_kw in content_lower for f_kw in ["=", "∫", "\\int", "dx", "formula", "equation", "h/2", "h/3", "3h/8"]):
                 scope_boost = 2.0
                 retrieval_reason = "formula_match"
         elif query_scope == "VISUAL":
-            if c.page_type in ["IMAGE", "FIGURE"] or any(v_kw in content_lower for v_kw in ["graph", "diagram", "figure", "plot"]):
+            if c.page_type in ["IMAGE", "FIGURE", "VISUAL_MATHEMATICAL"] or c.visual_image_path or any(v_kw in content_lower for v_kw in ["graph", "diagram", "figure", "plot"]):
                 scope_boost = 2.5
                 retrieval_reason = "visual_evidence"
         elif query_scope == "EXAMPLE":
@@ -164,12 +217,12 @@ def retrieve_hierarchical_chunks(
                 scope_boost = 2.0
                 retrieval_reason = "example_match"
 
-        # 7. Substantive Body Content Quality Boost
+        # 8. Substantive Body Content Quality Boost
         if len(content_lower.split()) > 15 and not is_cover_chunk:
             content_quality_boost = 1.4
 
-        base_score = sim + lex_score + (0.5 if is_target_match else 0.0) + page_match_score
-        final_score = base_score * target_multiplier * definition_boost * content_quality_boost * cover_demotion * page_boost * scope_boost
+        base_score = sim + lex_score + (0.5 if is_target_match else 0.0) + (0.4 if is_graph_neighborhood_match else 0.0) + page_match_score
+        final_score = base_score * target_multiplier * definition_boost * graph_boost * memory_boost * content_quality_boost * cover_demotion * page_boost * scope_boost
 
         doc = db.query(Document).filter(Document.id == c.document_id).first()
         doc_title = doc.title if doc else "Course Document"
@@ -193,9 +246,14 @@ def retrieve_hierarchical_chunks(
             "heading": c.heading or f"Page {p_start}",
             "section": c.section or f"Section Page {p_start}",
             "page_type": c.page_type or "TEXT",
+            "visual_image_path": getattr(c, "visual_image_path", None),
+            "formula_latex": getattr(c, "formula_latex", None),
             "slide_number": c.slide_number,
             "start_time": c.start_time,
             "end_time": c.end_time,
+            "is_graph_hit": is_graph_neighborhood_match,
+            "is_weak_topic_hit": is_weak_topic_match,
+            "is_misconception_hit": is_misconception_related,
             "relevance_category": relevance_category,
             "retrieval_reason": retrieval_reason,
             "similarity_score": sim,
@@ -296,9 +354,14 @@ def retrieve_hierarchical_chunks(
                     "heading": next_cand.heading or cand["heading"],
                     "section": next_cand.section or cand["section"],
                     "page_type": next_cand.page_type or "TEXT",
+                    "visual_image_path": getattr(next_cand, "visual_image_path", None),
+                    "formula_latex": getattr(next_cand, "formula_latex", None),
                     "slide_number": next_cand.slide_number,
                     "start_time": next_cand.start_time,
                     "end_time": next_cand.end_time,
+                    "is_graph_hit": cand.get("is_graph_hit", False),
+                    "is_weak_topic_hit": cand.get("is_weak_topic_hit", False),
+                    "is_misconception_hit": cand.get("is_misconception_hit", False),
                     "relevance_category": "NEIGHBORING_CONTEXT",
                     "retrieval_reason": "neighbor_context",
                     "similarity_score": cand["similarity_score"],

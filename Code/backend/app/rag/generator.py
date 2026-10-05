@@ -90,6 +90,16 @@ def generate_grounded_answer(
 
     # 3. Route to Multi-Provider LLM Architecture with Automatic Priority Failover
     logger.info(f"Generating answer via LLM Provider Router for query: '{query[:50]}...'")
+    if image_paths is None:
+        import os
+        extracted_images = []
+        for c in effective_chunks:
+            p = c.get("visual_image_path")
+            if p and os.path.exists(p) and p not in extracted_images:
+                extracted_images.append(p)
+        if extracted_images:
+            image_paths = extracted_images[:2]
+
     provider_response = llm_router.generate(
         prompt=grounded_prompt,
         system_prompt=SYSTEM_PROMPT,

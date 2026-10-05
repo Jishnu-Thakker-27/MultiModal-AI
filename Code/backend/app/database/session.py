@@ -39,7 +39,14 @@ def init_db():
         "ALTER TABLE document_chunks ADD COLUMN heading VARCHAR(255)",
         "ALTER TABLE document_chunks ADD COLUMN section VARCHAR(255)",
         "ALTER TABLE document_chunks ADD COLUMN page_end INTEGER",
-        "ALTER TABLE document_chunks ADD COLUMN page_type VARCHAR(50) DEFAULT 'TEXT'"
+        "ALTER TABLE document_chunks ADD COLUMN page_type VARCHAR(50) DEFAULT 'TEXT'",
+        "ALTER TABLE document_chunks ADD COLUMN visual_image_path VARCHAR(512)",
+        "ALTER TABLE document_chunks ADD COLUMN formula_latex TEXT",
+        "ALTER TABLE document_chunks ADD COLUMN entity_ids JSON",
+        "ALTER TABLE concept_relationships ADD COLUMN provenance_doc_id VARCHAR(36)",
+        "ALTER TABLE concept_relationships ADD COLUMN page_number INTEGER",
+        "ALTER TABLE concept_relationships ADD COLUMN source_chunk_id VARCHAR(36)",
+        "ALTER TABLE concept_relationships ADD COLUMN confidence FLOAT DEFAULT 1.0"
     ]:
         try:
             with engine.connect() as conn:

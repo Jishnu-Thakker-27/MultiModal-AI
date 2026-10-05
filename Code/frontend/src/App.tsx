@@ -9,6 +9,7 @@ import { LearningAnalytics } from './components/LearningAnalytics';
 import { LibrarySources } from './components/LibrarySources';
 
 export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('welcome');
   const [tactileAssistActive, setTactileAssistActive] = useState<boolean>(false);
   const [infoModal, setInfoModal] = useState<{
@@ -34,6 +35,18 @@ export default function App() {
       }
       return next;
     });
+  };
+
+  const handleLogin = () => {
+    setIsLoggedIn(true);
+    setCurrentScreen('tutor-workspace');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setCurrentScreen('welcome');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleEthicsClick = () => {
@@ -64,67 +77,77 @@ export default function App() {
   };
 
   const handleNavigate = (screen: ScreenType) => {
+    if (!isLoggedIn) {
+      setCurrentScreen('welcome');
+      return;
+    }
     setCurrentScreen(screen);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
     <div className="min-h-screen flex flex-col font-sans transition-colors duration-200 bg-[#fff8f0] text-[#1d1b17]">
-      {/* Top Sticky Navigation Bar */}
-      <Header
-        currentScreen={currentScreen}
-        onNavigate={handleNavigate}
-        tactileAssistActive={tactileAssistActive}
-        onToggleTactileAssist={handleToggleTactileAssist}
-        onLogout={() => handleNavigate('welcome')}
-      />
+      {/* Top Sticky Navigation Bar - Only visible AFTER login */}
+      {isLoggedIn && (
+        <Header
+          currentScreen={currentScreen}
+          onNavigate={handleNavigate}
+          tactileAssistActive={tactileAssistActive}
+          onToggleTactileAssist={handleToggleTactileAssist}
+          onLogout={handleLogout}
+        />
+      )}
 
       {/* Main Studio Viewport */}
-      <main className="w-full flex-1 px-3 sm:px-6 lg:px-8 max-w-7xl mx-auto py-6 sm:py-8">
-        {currentScreen === 'welcome' && (
+      <main className="w-full flex-1 px-3 sm:px-6 lg:px-8 max-w-7xl mx-auto py-6 sm:py-8 flex flex-col justify-center">
+        {!isLoggedIn || currentScreen === 'welcome' ? (
           <WelcomeScreen
-            onStartLearning={() => handleNavigate('tutor-workspace')}
-            onExploreGuest={() => handleNavigate('tutor-workspace')}
+            onStartLearning={handleLogin}
+            onExploreGuest={handleLogin}
             tactileAssistActive={tactileAssistActive}
             onToggleTactileAssist={handleToggleTactileAssist}
           />
-        )}
+        ) : (
+          <>
+            {currentScreen === 'tutor-workspace' && (
+              <TutorWorkspace
+                onNavigateToQuiz={() => handleNavigate('adaptive-quizzes')}
+                onNavigateToSources={() => handleNavigate('library-and-sources')}
+              />
+            )}
 
-        {currentScreen === 'tutor-workspace' && (
-          <TutorWorkspace
-            onNavigateToQuiz={() => handleNavigate('adaptive-quizzes')}
-            onNavigateToSources={() => handleNavigate('library-and-sources')}
-          />
-        )}
+            {currentScreen === 'adaptive-quizzes' && (
+              <AdaptiveQuizzes
+                onBackToWorkspace={() => handleNavigate('tutor-workspace')}
+                onNavigateToSources={() => handleNavigate('library-and-sources')}
+              />
+            )}
 
-        {currentScreen === 'adaptive-quizzes' && (
-          <AdaptiveQuizzes
-            onBackToWorkspace={() => handleNavigate('tutor-workspace')}
-            onNavigateToSources={() => handleNavigate('library-and-sources')}
-          />
-        )}
+            {currentScreen === 'learning-analytics' && (
+              <LearningAnalytics
+                onResumeSession={() => handleNavigate('tutor-workspace')}
+                onDrillTopic={() => handleNavigate('adaptive-quizzes')}
+              />
+            )}
 
-        {currentScreen === 'learning-analytics' && (
-          <LearningAnalytics
-            onResumeSession={() => handleNavigate('tutor-workspace')}
-            onDrillTopic={() => handleNavigate('adaptive-quizzes')}
-          />
-        )}
-
-        {currentScreen === 'library-and-sources' && (
-          <LibrarySources
-            onStartInquiry={() => handleNavigate('tutor-workspace')}
-            onGenerateQuiz={() => handleNavigate('adaptive-quizzes')}
-          />
+            {currentScreen === 'library-and-sources' && (
+              <LibrarySources
+                onStartInquiry={() => handleNavigate('tutor-workspace')}
+                onGenerateQuiz={() => handleNavigate('adaptive-quizzes')}
+              />
+            )}
+          </>
         )}
       </main>
 
-      {/* Footer */}
-      <Footer
-        onEthicsClick={handleEthicsClick}
-        onLabClick={handleLabClick}
-        onAccessibilityClick={handleAccessibilityClick}
-      />
+      {/* Footer - Only visible after login */}
+      {isLoggedIn && (
+        <Footer
+          onEthicsClick={handleEthicsClick}
+          onLabClick={handleLabClick}
+          onAccessibilityClick={handleAccessibilityClick}
+        />
+      )}
 
       {/* Modal Dialog for Pedagogical & Atelier Info */}
       {infoModal && (

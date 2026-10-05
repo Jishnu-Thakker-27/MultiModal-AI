@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database.models import (
     User, Course, Document, DocumentChunk, Topic, Subtopic, Concept,
-    Question, QuizAttempt, QuizAnswer, LearnerMastery, Conversation, Message, ConversationSource
+    Question, QuizAttempt, QuizAnswer, LearnerMastery, Conversation, Message, ConversationSource,
+    ConceptGraphNode, ConceptRelationship, ConceptMastery, LearnerMisconception
 )
 from typing import List, Optional, Dict, Any
 
@@ -92,6 +93,9 @@ class Repository:
                 section=c.get('section'),
                 page_end=c.get('page_end'),
                 page_type=c.get('page_type', 'TEXT'),
+                visual_image_path=c.get('visual_image_path'),
+                formula_latex=c.get('formula_latex'),
+                entity_ids=c.get('entity_ids'),
                 embedding=c.get('embedding')
             ))
         self.db.bulk_save_objects(chunk_objs)
@@ -113,6 +117,13 @@ class Repository:
                 "topic": c.get("topic"),
                 "subtopic": c.get("subtopic"),
                 "concept": c.get("concept"),
+                "heading": c.get("heading"),
+                "section": c.get("section"),
+                "page_end": c.get("page_end"),
+                "page_type": c.get("page_type", "TEXT"),
+                "visual_image_path": c.get("visual_image_path"),
+                "formula_latex": c.get("formula_latex"),
+                "entity_ids": c.get("entity_ids"),
                 "embedding": c.get("embedding")
             })
         self.add_chunks(formatted)
@@ -241,10 +252,98 @@ class Repository:
             alpha = 0.3
             target = 100.0 if is_correct else 0.0
             mastery.mastery_score = round((1 - alpha) * mastery.mastery_score + alpha * target, 1)
+
         self.db.commit()
+        self.db.refresh(mastery)
         return mastery.mastery_score
 
-    # --- Conversation & Context Scope Management ---
+    # --- Learner Misconceptions & Weaknesses ---
+    def get_user_misconceptions(self, user_id: str, concept_id: Optional[str] = None, unresolved_only: bool = True) -> List[LearnerMisconception]:
+        query = self.db.query(LearnerMisconception).filter(LearnerMisconception.user_id == user_id)
+        if concept_id:
+            query = query.filter(LearnerMisconception.concept_id == concept_id)
+        if unresolved_only:
+            query = query.filter(LearnerMisconception.is_resolved == False)
+        return query.order_by(LearnerMisconception.detected_at.desc()).all()
+
+    def record_misconception(self, user_id: str, misconception_text: str, concept_id: Optional[str] = None, severity: str = "moderate") -> LearnerMisconception:
+        existing = self.db.query(LearnerMisconception).filter(
+            LearnerMisconception.user_id == user_id,
+            LearnerMisconception.misconception_text == misconception_text,
+            LearnerMisconception.is_resolved == False
+        ).first()
+
+        if existing:
+            existing.occurrence_count += 1
+            existing.detected_at = datetime.utcnow()
+            self.db.commit()
+            self.db.refresh(existing)
+            return existing
+
+        misc = LearnerMisconception(
+            user_id=user_id,
+            concept_id=concept_id,
+            misconception_text=misconception_text,
+            severity=severity,
+            occurrence_count=1,
+            is_resolved=False,
+            detected_at=datetime.utcnow()
+        )
+        self.db.add(misc)
+        self.db.commit()
+        self.db.refresh(misc)
+        return misc
+
+    def resolve_misconception(self, misconception_id: str) -> bool:
+        misc = self.db.query(LearnerMisconception).filter(LearnerMisconception.id == misconception_id).first()
+        if not misc:
+            return False
+        misc.is_resolved = True
+        misc.last_addressed_at = datetime.utcnow()
+        self.db.commit()
+        return True
+
+    def get_learner_profile(self, user_id: str = "demo_student", course_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Aggregates persistent learner profile state:
+        - topic masteries
+        - weak topics (mastery < 50)
+        - strong topics (mastery >= 75)
+        - active misconceptions
+        - concept masteries
+        """
+        masteries = self.db.query(LearnerMastery).filter(LearnerMastery.user_id == user_id).all()
+        concept_masteries = self.db.query(ConceptMastery).filter(ConceptMastery.user_id == user_id).all()
+        misconceptions = self.get_user_misconceptions(user_id=user_id, unresolved_only=True)
+
+        weak_topics = []
+        strong_topics = []
+        topic_scores = {}
+        for m in masteries:
+            topic = self.db.query(Topic).filter(Topic.id == m.topic_id).first()
+            t_name = topic.name if topic else "General"
+            topic_scores[t_name] = m.mastery_score
+            if m.mastery_score < 50.0:
+                weak_topics.append({"topic_id": m.topic_id, "topic_name": t_name, "score": m.mastery_score})
+            elif m.mastery_score >= 75.0:
+                strong_topics.append({"topic_id": m.topic_id, "topic_name": t_name, "score": m.mastery_score})
+
+        return {
+            "user_id": user_id,
+            "weak_topics": weak_topics,
+            "strong_topics": strong_topics,
+            "topic_scores": topic_scores,
+            "concept_masteries": {cm.concept_id: cm.mastery_score for cm in concept_masteries},
+            "active_misconceptions": [
+                {
+                    "id": misc.id,
+                    "concept_id": misc.concept_id,
+                    "text": misc.misconception_text,
+                    "severity": misc.severity,
+                    "count": misc.occurrence_count
+                } for misc in misconceptions
+            ]
+        }
     def create_conversation(self, title: str = "New Conversation", user_id: str = "demo_student", course_id: Optional[str] = None, topic_name: Optional[str] = None) -> Conversation:
         conv = Conversation(
             user_id=user_id,

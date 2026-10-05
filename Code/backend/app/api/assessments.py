@@ -152,6 +152,24 @@ def submit_assessment(
             feedback=g_ans["explanation"]
         )
 
+        # Track misconceptions in learner memory
+        q_obj = repo.get_question(g_ans["question_id"])
+        target_concept_id = q_obj.topic_id if q_obj else first_topic_id
+        if not g_ans["is_correct"]:
+            t_obj = repo.get_topic_by_id(target_concept_id) if target_concept_id else None
+            c_name = t_obj.name if t_obj else "Course Concept"
+            misc_text = f"Difficulty with {c_name}: {g_ans['explanation'][:150]}"
+            repo.record_misconception(
+                user_id=user.id,
+                concept_id=target_concept_id,
+                misconception_text=misc_text,
+                severity="moderate"
+            )
+        elif target_concept_id:
+            active_miscs = repo.get_user_misconceptions(user_id=user.id, concept_id=target_concept_id, unresolved_only=True)
+            for m in active_miscs:
+                repo.resolve_misconception(m.id)
+
     # Update mastery for topics in the course
     updated_mastery = pct
     if first_topic_id:

@@ -41,102 +41,41 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                     <img alt="SocraticAI" className="h-6 w-auto" src={brandLogoUrl} />
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[17px] font-extrabold text-[#1d1b17] leading-tight">
-                      SocraticAI
+                    <span className="text-[25px] font-extrabold text-[#1d1b17] leading-tight">
+                      SocraticAI Studio
                     </span>
-                    <span className="text-[11px] text-[#4f453f]">
+                    <span className="text-[15px] text-[#4f453f]">
                       Multimodal Learning Studio
                     </span>
                   </div>
                 </div>
-                <span className="px-3 py-1 rounded-full bg-white border border-[#ede7df]/60 text-[11px] font-bold text-[#745948] shadow-sm">
-                  Atelier v2.4
-                </span>
               </div>
 
-              {/* Socratic Methodology Tag */}
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f3cfba]/80 text-[#725746] text-[12px] font-bold w-fit shadow-sm">
-                <span className="material-symbols-outlined text-[15px]">psychology</span>
-                <span>Socratic Methodology</span>
-              </div>
+              
+
+
 
               {/* Wisdom Quote */}
-              <h2 className="text-[26px] xl:text-[30px] font-extrabold text-[#1d1b17] leading-tight tracking-tight">
+              <h2 className="text-[35px] xl:text-[30px] font-extrabold text-[#1d1b17] leading-tight tracking-tight">
                 &ldquo;Wisdom begins in wonder. Learn any topic from your own notes, slides, and lectures — at your natural tempo.&rdquo;
               </h2>
 
-              <p className="text-[13px] text-[#4f453f] leading-relaxed">
+              <p className="text-[20px] text-[#4f453f] leading-relaxed">
                 A patient conversational guide bridging academic rigor and multimodal intuition through interactive prompts.
               </p>
-            </div>
-
-            <div className="flex flex-col gap-5 pt-8">
-              {/* Adaptive Mastery Metric Card */}
-              <div className="p-4 rounded-2xl bg-white border border-[#ede7df]/60 shadow-sm flex flex-col gap-2">
-                <div className="flex items-center justify-between text-[13px]">
-                  <span className="flex items-center gap-2 font-medium text-[#1d1b17]">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#496459] animate-pulse"></span>
-                    Adaptive Mastery Metric
-                  </span>
-                  <span className="font-extrabold text-[#1d1b17] text-[14px]">
-                    94.8%
-                  </span>
-                </div>
-                <div className="w-full h-2.5 rounded-full bg-[#f3ede5] p-0.5 overflow-hidden">
-                  <div className="h-full rounded-full bg-[#496459]" style={{ width: '94.8%' }}></div>
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-[#4f453f]">
-                  <span>Scaffolding Active</span>
-                  <span>Self-Paced Rhythm</span>
-                </div>
-              </div>
-
-              {/* Testimonial Card */}
-              <div className="p-4 rounded-2xl bg-white border border-[#ede7df]/60 shadow-sm flex flex-col gap-2.5">
-                <div className="flex items-center gap-3">
-                  <img
-                    alt={currentUser.name}
-                    className="w-10 h-10 rounded-full object-cover shadow-sm shrink-0 ring-1 ring-black/10"
-                    src={currentUser.avatarUrl}
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-[13px] font-bold text-[#1d1b17]">
-                      Elena Rostova, 54
-                    </span>
-                    <span className="text-[11px] text-[#4f453f]">
-                      Self-Taught Python & Data Analysis
-                    </span>
-                  </div>
-                </div>
-                <p className="text-[12px] text-[#4f453f] italic leading-relaxed">
-                  &ldquo;SocraticAI doesn&apos;t just hand me answers. It unrolls my own logic step by step, never making me feel rushed or judged.&rdquo;
-                </p>
-              </div>
             </div>
           </div>
 
           {/* RIGHT COLUMN: Sign In Form & Studio Entry */}
           <div className="lg:col-span-7 flex flex-col justify-between py-2 lg:px-4">
             <div>
-              {/* Top Controls Bar */}
-              <div className="flex items-center justify-between pb-6">
-                <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#cbe3f6]/60 text-[#2c4e68] text-[12px] font-semibold shadow-sm">
-                  <span className="material-symbols-outlined text-[15px]">lock</span>
-                  <span>Secure Socratic Gateway</span>
-                </span>
-
-                <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-[#f3cfba]/60 text-[#745948]">
-                  Verified Studio Access
-                </span>
-              </div>
-
               {/* Title & Welcome */}
               <div className="flex flex-col gap-2 mb-6">
                 <h1 className="text-[28px] sm:text-[34px] font-extrabold text-[#1d1b17] tracking-tight">
-                  Welcome to SocraticAI
+                  Sign in to SocraticAI Studio
                 </h1>
                 <p className="text-[14px] text-[#4f453f]">
-                  Enter your multimodal study space to resume notes, real-time voice debates, and dynamic mastery quizzes.
+                  Enter your study space to access your adaptive tutor workspace, adaptive quizzes, learning analytics, and library choices.
                 </p>
               </div>
 
@@ -245,20 +184,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                     />
                     <span>Keep me signed in</span>
                   </label>
-
-                  <button
-                    type="button"
-                    onClick={onToggleTactileAssist}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-medium transition-all cursor-pointer ${
-                      tactileAssistActive
-                        ? 'bg-[#c0ddd0] text-[#052018] font-bold shadow-sm'
-                        : 'bg-[#ede7df] text-[#4f453f] border border-[#ede7df]/60'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[15px]">accessibility</span>
-                    <span>Senior & High-Acuity Tactile Assist</span>
-                    <span className="px-1.5 py-0.2 rounded bg-black/10 text-[10px] font-bold">AAA</span>
-                  </button>
                 </div>
 
                 {/* Primary CTA: Start Learning */}
@@ -283,7 +208,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </div>
 
             {/* Bottom Form Footer Links */}
-            <div className="flex flex-wrap items-center justify-between gap-4 pt-8 text-[12px] text-[#4f453f]">
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-8 text-[13px] text-[#4f453f]">
               <div className="flex items-center gap-1">
                 <span>New to SocraticAI?</span>
                 <button

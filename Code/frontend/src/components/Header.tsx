@@ -32,11 +32,10 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   const navItems: { label: string; screen: ScreenType; icon: string }[] = [
-    { label: 'Welcome Gateway', screen: 'welcome', icon: 'login' },
     { label: 'Tutor Workspace', screen: 'tutor-workspace', icon: 'psychology' },
     { label: 'Adaptive Quizzes', screen: 'adaptive-quizzes', icon: 'quiz' },
     { label: 'Learning Analytics', screen: 'learning-analytics', icon: 'analytics' },
-    { label: 'Library & Sources', screen: 'library-and-sources', icon: 'library_books' },
+    { label: 'Library Choices', screen: 'library-and-sources', icon: 'library_books' },
   ];
 
   return (
@@ -240,7 +239,7 @@ export const Header: React.FC<HeaderProps> = ({
                       className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-[#fdf2f2] text-[#ba1a1a] hover:bg-[#fecaca]/50 text-[12px] font-bold border border-[#fecaca]/60 transition-all cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-[16px]">logout</span>
-                      <span>Switch to Welcome Gateway</span>
+                      <span>Sign Out</span>
                     </button>
                   </div>
                 </div>

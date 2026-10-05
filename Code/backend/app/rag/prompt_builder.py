@@ -25,8 +25,15 @@ def build_grounded_prompt(query: str, chunks: List[Dict[str, Any]], teaching_pla
             elif source_type == 'video':
                 loc_str = f"Video {c.get('start_time')}"
 
+            extra_meta = []
+            if c.get('formula_latex'):
+                extra_meta.append(f"Formula LaTeX: {c.get('formula_latex')}")
+            if c.get('visual_image_path'):
+                extra_meta.append("Visual Diagram Available")
+            meta_str = f" | {', '.join(extra_meta)}" if extra_meta else ""
+
             context_blocks.append(
-                f"[Source Chunk {idx}] Document: {c.get('document_title', 'Document')} | Section: {c.get('section', 'General')} | Location: {loc_str}\nContent: {c.get('content', '')}"
+                f"[Source Chunk {idx}] Document: {c.get('document_title', 'Document')} | Section: {c.get('section', 'General')} | Location: {loc_str}{meta_str}\nContent: {c.get('content', '')}"
             )
         context_str = "\n\n".join(context_blocks)
 
@@ -42,6 +49,12 @@ def build_grounded_prompt(query: str, chunks: List[Dict[str, Any]], teaching_pla
                 "  4. Conclude with a helpful summary comparison or learning roadmap.\n"
                 "  5. Synthesize clearly for a student. DO NOT dump raw calculation tables or focus narrowly on one worked example.\n"
             )
+
+        personalization = teaching_plan.get("personalization_directives", [])
+        if personalization:
+            plan_str += "- LEARNER PERSONALIZATION DIRECTIVES:\n"
+            for p in personalization:
+                plan_str += f"  * {p}\n"
 
     user_prompt = f"""{plan_str}CONTEXT:
 {context_str}
