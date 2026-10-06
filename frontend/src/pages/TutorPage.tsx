@@ -46,7 +46,7 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
-  const [pedagogyTone, setPedagogyTone] = useState('Intuitive Analogy');
+  const [pedagogyTone, setPedagogyTone] = useState('Basics to Advanced');
   const [isRecordingMic, setIsRecordingMic] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -562,17 +562,20 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
               </div>
 
               {/* Pedagogy Tone Dropdown */}
-              <div className="flex items-center gap-2 p-1 pl-3 pr-2 rounded-full bg-[#f9f3eb] shadow-[inset_0_1.5px_2px_rgba(175,160,147,0.15)] text-[12px] shrink-0">
-                <span className="material-symbols-outlined text-[16px] text-[#745948]">auto_stories</span>
-                <span className="text-[#81756e]">Tone:</span>
+              <div className="flex items-center gap-2 p-1.5 pl-3 pr-2.5 rounded-full bg-[#f9f3eb] shadow-[inset_0_1.5px_2px_rgba(175,160,147,0.15)] text-[12px] shrink-0 border border-[#ede7df]/80">
+                <span className="material-symbols-outlined text-[16px] text-[#745948]">tune</span>
+                <span className="text-[#81756e] font-medium">Mode:</span>
                 <select
                   value={pedagogyTone}
                   onChange={(e) => setPedagogyTone(e.target.value)}
-                  className="bg-transparent font-bold text-[#1d1b17] focus:outline-none cursor-pointer"
+                  className="bg-transparent font-bold text-[#1d1b17] focus:outline-none cursor-pointer pr-1"
                 >
-                  <option value="Intuitive Analogy">Intuitive Analogy</option>
-                  <option value="Socratic First Principles">First Principles</option>
+                  <option value="Basics to Advanced">Basics to Advanced (Step-by-Step)</option>
+                  <option value="Intuitive Analogy">Intuitive Analogy (Feynman Method)</option>
+                  <option value="Step-by-Step Worked Examples">Worked Examples & Calculations</option>
+                  <option value="Socratic First Principles">First Principles (Socratic)</option>
                   <option value="Mathematical Formalism">Mathematical Formalism</option>
+                  <option value="Exam Prep & High-Yield">Exam Prep & High-Yield</option>
                 </select>
               </div>
             </div>

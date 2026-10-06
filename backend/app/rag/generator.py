@@ -41,16 +41,27 @@ def generate_grounded_answer(
             False
         )
 
-    # Assess max final score of retrieved chunks
-    max_score = max([c.get("final_score", 0.0) for c in chunks]) if chunks else 0.0
-    # A missing target must never be sent to an LLM just because generic words
-    # inflated a retriever score. Document summaries use STATE_C explicitly.
+    # Check if target truly lacks evidence across retrieved chunks
     if coverage_state == "STATE_A_NOT_FOUND":
-        return (
-            f"This topic '**{target_name}**' is not covered in your uploaded course material. I couldn't find enough information in the provided documents.",
-            [],
-            False
+        query_terms = [
+            w for w in re.sub(r'[^a-zA-Z0-9]+', ' ', query.lower()).split()
+            if len(w) > 3 and w not in ["what", "explain", "about", "tell", "teach", "give", "show", "formula", "method"]
+        ]
+        has_strong_chunk = any(
+            c.get("page_type") != "COVER_METADATA" and
+            len(c.get("content", "").split()) > 15 and
+            (any(t in c.get("content", "").lower() for t in query_terms) if query_terms else True)
+            for c in chunks
         )
+        if not has_strong_chunk:
+            return (
+                f"This topic '**{target_name}**' is not covered in your uploaded course material. I couldn't find enough information in the provided documents.",
+                [],
+                False
+            )
+        else:
+            coverage_state = "STATE_C_SUFFICIENT_INFO"
+
 
     # Filter out cover metadata chunks if substantive content chunks exist
     substantive_chunks = [c for c in chunks if c.get("page_type") != "COVER_METADATA" and len(c.get("content", "").split()) > 10]

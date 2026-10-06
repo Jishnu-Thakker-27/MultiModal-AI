@@ -1,6 +1,7 @@
 import pymupdf as fitz
 import os
 import re
+import unicodedata
 import logging
 from typing import List, Dict, Any, Optional
 
@@ -68,7 +69,7 @@ def extract_pdf_content(
                 if not first_heading and len(b_text) > 3:
                     first_heading = b_text.split('\n')[0].strip()
 
-        full_text = "\n".join(text_blocks).strip()
+        full_text = unicodedata.normalize('NFKD', "\n".join(text_blocks)).strip()
 
         # Update running structural section hierarchy (e.g. Unit-4, Chapter 2, Section 3.1)
         sec_match = re.search(r'(Unit\s*[-:\d]+[^\n]*|Chapter\s*[-:\d]+[^\n]*|Section\s*[-:\d]+[^\n]*)', full_text, re.IGNORECASE)

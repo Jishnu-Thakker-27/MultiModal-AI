@@ -1,5 +1,6 @@
 import logging
 import re
+import unicodedata
 from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
 from app.database.models import ConceptGraphNode, DocumentChunk, Document
@@ -51,6 +52,21 @@ def generate_concept_aliases(concept_name: str) -> List[str]:
 
     return list(aliases)
 
+def normalize_common_math_typos(text: str) -> str:
+    replacements = [
+        (r'\bdiffernce\b', 'difference'),
+        (r'\bdivide\s+difference\b', 'divided difference'),
+        (r'\bformulaa\b', 'formula'),
+        (r'\binterpolarion\b', 'interpolation'),
+        (r'\binterploation\b', 'interpolation'),
+        (r'\bpolynomail\b', 'polynomial'),
+        (r'\bevalute\b', 'evaluate'),
+    ]
+    res = text
+    for pat, rep in replacements:
+        res = re.sub(pat, rep, res, flags=re.IGNORECASE)
+    return res
+
 class TargetResolver:
     """
     Generalized Target Concept Resolver & Coverage Evaluator.
@@ -63,7 +79,7 @@ class TargetResolver:
         self.repo = Repository(db)
 
     def extract_raw_target_candidate(self, query: str) -> str:
-        q = query.strip()
+        q = normalize_common_math_typos(query.strip())
         if is_document_overview_query(q):
             return "Document Overview"
 
@@ -95,12 +111,13 @@ class TargetResolver:
         conversation_id: Optional[str] = None,
         conversation_history: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
+        normalized_query = normalize_common_math_typos(query)
         allowed_doc_ids = []
         if conversation_id:
             allowed_doc_ids = self.repo.get_conversation_document_ids(conversation_id)
 
         # Check if query is explicitly asking for whole document/chapter overview
-        if is_document_overview_query(query):
+        if is_document_overview_query(normalized_query):
             doc_title = "Document Overview"
             if allowed_doc_ids:
                 doc = self.db.query(Document).filter(Document.id.in_(allowed_doc_ids)).first()
@@ -123,7 +140,7 @@ class TargetResolver:
                 "is_document_overview": True
             }
 
-        raw_target = self.extract_raw_target_candidate(query)
+        raw_target = self.extract_raw_target_candidate(normalized_query)
         aliases = generate_concept_aliases(raw_target)
 
         # Derive root term for target_name (e.g. "Forward Difference Method" -> "Forward Difference")
@@ -132,9 +149,18 @@ class TargetResolver:
 
         is_follow_up = False
         if conversation_history:
-            q_lower = query.strip().lower()
-            pronouns = ["it", "this", "that", "them", "the third rod", "again", "why", "how is"]
-            if any(p in q_lower for p in pronouns) or len(q_lower.split()) <= 4:
+            q_lower = normalized_query.strip().lower()
+            pronouns = ["it", "this", "that", "them", "again", "why is that", "explain more", "continue", "how so"]
+            domain_math_words = [
+                "difference", "interpolation", "divided", "forward", "backward", "formula",
+                "method", "table", "bisection", "root", "matrix", "integration", "newton",
+                "simpson", "trapezoidal", "iteration", "secant", "lagrange"
+            ]
+            has_pronoun = any(re.search(r'\b' + re.escape(p) + r'\b', q_lower) for p in pronouns)
+            has_domain_word = any(w in q_lower for w in domain_math_words)
+
+            # ONLY treat as follow-up if query explicitly refers to previous context AND has no new domain keywords
+            if (has_pronoun or q_lower in ["why?", "how?", "explain again", "more", "tell me more"]) and not has_domain_word:
                 for msg in reversed(conversation_history):
                     role = (msg.get("role") or msg.get("sender") or "").lower()
                     if role not in ["user", "student"]:
@@ -161,15 +187,25 @@ class TargetResolver:
         definition_chunks = []
         subtopic_chunks = []
 
+        # Extract substantive target words for token-level matching
+        target_tokens = [
+            w for w in re.sub(r'[^a-zA-Z0-9]+', ' ', display_target.lower()).split()
+            if len(w) > 3 and w not in ["method", "formula", "rule", "technique", "what", "explain"]
+        ]
+
         for c in chunks:
-            content_lower = c.content.lower()
+            content_lower = unicodedata.normalize('NFKD', c.content or '').lower()
             content_norm = re.sub(r'[-_]', ' ', content_lower)
 
-            # Flexible alias or root concept match
-            if any(alias in content_lower or alias in content_norm for alias in aliases):
+            # 1. Flexible alias or root concept match
+            has_alias_match = any(alias in content_lower or alias in content_norm for alias in aliases)
+            # 2. Token-level intersection match (e.g. "forward" and "difference")
+            has_token_match = bool(target_tokens and all(tok in content_lower for tok in target_tokens))
+
+            if has_alias_match or has_token_match:
                 matching_chunks.append(c)
 
-                if any(def_kw in content_lower for def_kw in ["is defined as", "definition of", "what is", "is a linear", "is a self-balancing", "is a tree"]):
+                if any(def_kw in content_lower for def_kw in ["is defined as", "definition of", "what is", "are defined as", "are called", "denoted by"]):
                     definition_chunks.append(c)
                 elif any(sub_kw in content_lower for sub_kw in ["deletion", "insertion", "operation", "search", "traversal"]):
                     subtopic_chunks.append(c)

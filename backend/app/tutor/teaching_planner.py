@@ -57,26 +57,35 @@ class TeachingPlanner:
             ]
         elif is_intro or intent in ["LEARN_CONCEPT", "DEFINITION"]:
             teaching_stage = "FOUNDATIONS_FIRST"
-            c_type = target_node.concept_type if target_node else "concept"
-
-            if c_type in ["algorithm", "procedure"]:
+            t_lower = target_name.lower()
+            if any(term in t_lower for term in ["interpolation", "difference", "numerical", "integration"]):
                 concepts_to_cover = [
-                    f"1. Intuitive Hook & The Problem {target_name} Solves",
-                    f"2. Step-by-Step Mechanism with Notation Breakdown",
-                    f"3. Annotated Worked Example & Practical Complexity"
-                ]
-            elif c_type in ["formula", "theorem", "principle"]:
-                concepts_to_cover = [
-                    f"1. Intuitive Mental Model: Why does {target_name} exist?",
-                    f"2. Formal Equation & Dissecting Each Symbol in Notation",
-                    f"3. Step-by-Step Application with Pro-Tips and Pitfalls"
+                    f"1. Core Definitions & Motivation: Data points $(x_i, y_i)$, arguments $x$, entries $y$, step size $h = x_{{i+1}} - x_i$, and Interpolation vs. Extrapolation",
+                    f"2. Elementary Prerequisite Tools (Finite Differences): The forward difference operator $\\Delta$, first differences $\\Delta y_0 = y_1 - y_0$, second differences $\\Delta^2 y_0$, and constructing the Forward Difference Table",
+                    f"3. Connecting the Tool to the Formula: Why Newton's Forward Interpolation formula is built from the difference table, and parameter $p = \\frac{{x - x_0}}{{h}}$",
+                    f"4. Step-by-Step Annotated Worked Example using the Difference Table",
+                    f"5. Next Steps & Advanced Variations: Backward differences $\\nabla$ and Divided differences"
                 ]
             else:
-                concepts_to_cover = [
-                    f"1. Intuitive Mental Model & Real-World Analogy for {target_name}",
-                    f"2. Formal Definition, Mathematical Mechanism & Notation",
-                    f"3. Practical Worked Example & Socratic Check-in"
-                ]
+                c_type = target_node.concept_type if target_node else "concept"
+                if c_type in ["algorithm", "procedure"]:
+                    concepts_to_cover = [
+                        f"1. Intuitive Hook & The Fundamental Problem {target_name} Solves",
+                        f"2. Elementary Prerequisite Tools & Notation Breakdown",
+                        f"3. Step-by-Step Mechanism with Annotated Worked Example"
+                    ]
+                elif c_type in ["formula", "theorem", "principle"]:
+                    concepts_to_cover = [
+                        f"1. Intuitive Mental Model: Why does {target_name} exist?",
+                        f"2. Foundational Prerequisite Tools & Definition of Notation",
+                        f"3. Formal Equation, Symbol Dissection & Step-by-Step Application"
+                    ]
+                else:
+                    concepts_to_cover = [
+                        f"1. Intuitive Mental Model & Real-World Analogy for {target_name}",
+                        f"2. Foundational Definitions, Mathematical Mechanism & Notation",
+                        f"3. Practical Step-by-Step Worked Example & Socratic Check-in"
+                    ]
         elif needs_bridge and missing_prereqs:
             teaching_stage = "PREREQUISITE_BRIDGE"
             p_names = ", ".join([p.name for p in missing_prereqs[:2]])
@@ -87,16 +96,28 @@ class TeachingPlanner:
         else:
             teaching_stage = "FOUNDATIONS_FIRST"
             concepts_to_cover = [
-                f"1. Intuitive Core Concept for {target_name}",
-                f"2. In-Depth Explanation with Notation Unpacked",
-                f"3. Concrete Application & Next Steps"
+                f"1. Elementary Definitions & Core Foundation for {target_name}",
+                f"2. Prerequisite Tools, Difference Operators & Notation",
+                f"3. Concrete Step-by-Step Application & Next Steps"
             ]
 
         # Tone-specific pedagogical instructions
         tone_map = {
+            "Basics to Advanced": (
+                "CRITICAL INSTRUCTION - BASICS TO ADVANCED:\n"
+                "You MUST build understanding strictly from the ground up! "
+                "Define basic concepts (arguments, entries, step size $h$) first. "
+                "Explain finite difference operators (first forward differences $\\Delta y_0 = y_1 - y_0$, second forward differences $\\Delta^2 y_0$) "
+                "and show how to construct a simple Difference Table BEFORE introducing any complex formula or evaluation. "
+                "Only after the difference table is clear, introduce Newton's formula and walk through the example."
+            ),
             "Intuitive Analogy": (
                 "Lead with an intuitive, memorable real-world analogy before presenting any formula. "
                 "Demystify abstract math symbols by connecting them to tangible everyday physical processes."
+            ),
+            "Step-by-Step Worked Examples": (
+                "Focus on clear step-by-step problem-solving recipes. Construct intermediate tools (like difference tables) "
+                "with annotated arithmetic before calculating final values."
             ),
             "Socratic First Principles": (
                 "Deconstruct the concept down to fundamental axioms. Ask guiding questions that lead the "
@@ -106,12 +127,12 @@ class TeachingPlanner:
                 "Deliver rigorous mathematical precision: clearly state theorem conditions, assumptions, "
                 "domain/boundary constraints, and step-by-step analytical derivations."
             ),
-            "Exam Prep": (
+            "Exam Prep & High-Yield": (
                 "Focus on high-yield exam takeaways: provide quick checklists, common exam traps, "
                 "memorization tricks, and efficient step-by-step problem-solving templates."
             ),
         }
-        tone_directive = tone_map.get(tone, tone_map["Intuitive Analogy"])
+        tone_directive = tone_map.get(tone, tone_map.get("Basics to Advanced", tone_map["Intuitive Analogy"]))
 
         # Learner Memory Scaffolding (Weak Topic Support & Misconception Remediation)
         learner_profile = pedagogical_context.get("learner_profile") or {}
