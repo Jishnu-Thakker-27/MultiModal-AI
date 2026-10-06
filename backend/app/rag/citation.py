@@ -39,7 +39,7 @@ def extract_citations_from_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str
                 "slide": slide,
                 "start_time": start_time,
                 "end_time": c.get("end_time"),
-                "file_url": c.get("file_url", ""),
+                "file_url": c.get("file_url") or (f"/api/documents/{doc_id}/file" if doc_id else ""),
                 "section": c.get("section", ""),
                 "heading": c.get("heading", ""),
                 "excerpt": c.get("content", "")[:250]

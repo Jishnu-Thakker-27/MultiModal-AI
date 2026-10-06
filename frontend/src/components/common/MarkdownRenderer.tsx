@@ -7,6 +7,7 @@ import rehypeKatex from 'rehype-katex';
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  onCitationClick?: (pageNumber: number) => void;
 }
 
 /**
@@ -16,11 +17,22 @@ interface MarkdownRendererProps {
  * - Isolates $$ fences onto their own lines so remark-math does not treat \begin{array} as metadata
  * - Wraps bare math environments in $$ fences
  * - Ensures markdown headings immediately following math are separated cleanly
+ * - Formats bare source citations into interactive markdown links
  */
 function preprocessLaTeX(content: string): string {
   if (!content || typeof content !== 'string') return '';
 
   let formatted = content;
+
+  // Convert bare "Source: Page X" or "📖 Source: Page X" lines into markdown links if not already linked
+  formatted = formatted.replace(
+    /^(\s*>*\s*📖?\s*(?:\*\*)?Source:\s*(?:\*\*)?)\s*(?:Page|p\.)?\s*(\d+)(.*)$/gim,
+    (_m, _p1, pNum, note) => {
+      const noteClean = (note || '').trim().replace(/^[•\*\-\s]+/, '');
+      const noteStr = noteClean ? ` • *${noteClean}*` : '';
+      return `> 📖 **Source: [Page ${pNum}](#page-${pNum})**${noteStr}`;
+    }
+  );
 
   // 1. Convert \[ ... \] display math to $$ ... $$ on isolated lines
   formatted = formatted.replace(/\\\[([\s\S]*?)\\\]/g, (_match, eq) => `\n\n$$\n${eq.trim()}\n$$\n\n`);
@@ -29,7 +41,6 @@ function preprocessLaTeX(content: string): string {
   formatted = formatted.replace(/\\\(([\s\S]*?)\\\)/g, (_match, eq) => `$${eq.trim()}$`);
 
   // 3. Normalize all existing $$ ... $$ blocks so $$ delimiters are guaranteed to be isolated on their own lines
-  // This prevents remark-math from interpreting the first line (e.g. \begin{array}) as code block meta information
   formatted = formatted.replace(/\$\$([\s\S]*?)\$\$/g, (_match, eq) => {
     return `\n\n$$\n${eq.trim()}\n$$\n\n`;
   });
@@ -55,7 +66,7 @@ function preprocessLaTeX(content: string): string {
   return formatted.trim();
 }
 
-const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className = '' }) => {
+const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className = '', onCitationClick }) => {
   const processedContent = preprocessLaTeX(content);
 
   return (
@@ -97,9 +108,48 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
           hr: ({ node, ...props }) => (
             <hr className="my-4 border-[#ede7df]" {...props} />
           ),
-          blockquote: ({ node, ...props }) => (
-            <blockquote className="border-l-4 border-[#745948] pl-3.5 py-1.5 my-3 bg-[#f9f3eb] rounded-r-xl text-[#4f453f] italic" {...props} />
-          ),
+          blockquote: ({ node, children, ...props }) => {
+            return (
+              <blockquote className="border-l-4 border-[#745948] pl-3.5 py-1.5 my-3 bg-[#f9f3eb] rounded-r-xl text-[#4f453f] text-[13px] flex items-center flex-wrap gap-1.5" {...props}>
+                {children}
+              </blockquote>
+            );
+          },
+          a: ({ node, href, children, ...props }: any) => {
+            const pageMatch = href?.match(/page[=-]?(\d+)/i) || String(children).match(/page\s*(\d+)/i);
+            if (pageMatch && onCitationClick) {
+              const pageNum = parseInt(pageMatch[1], 10);
+              return (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onCitationClick(pageNum);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 my-0.5 rounded-lg bg-[#f3cfba]/60 hover:bg-[#f3cfba] text-[#725746] font-bold text-[12px] border border-[#e2b79f] cursor-pointer transition-all shadow-2xs group"
+                  title={`Open PDF directly at page ${pageNum}`}
+                >
+                  <span className="material-symbols-outlined text-[13px] text-[#725746] group-hover:scale-110 transition-transform">
+                    menu_book
+                  </span>
+                  <span>{children}</span>
+                  <span className="material-symbols-outlined text-[11px] opacity-70">open_in_new</span>
+                </button>
+              );
+            }
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#745948] underline font-medium hover:text-[#523d2f]"
+                {...props}
+              >
+                {children}
+              </a>
+            );
+          },
           table: ({ node, ...props }) => (
             <div className="overflow-x-auto my-4 rounded-xl border border-[#ede7df] shadow-xs">
               <table className="min-w-full divide-y divide-[#ede7df] text-left text-xs sm:text-sm" {...props} />

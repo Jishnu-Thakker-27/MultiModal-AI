@@ -69,6 +69,33 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
 
+  // Document PDF Viewer Modal State
+  const [viewerState, setViewerState] = useState<{
+    isOpen: boolean;
+    documentId: string;
+    documentTitle: string;
+    page: number;
+  } | null>(null);
+
+  const openDocumentViewer = (documentId?: string, page: number = 1, documentTitle: string = 'Course Material') => {
+    let resolvedId = documentId;
+    let resolvedTitle = documentTitle;
+    if (!resolvedId && activeSources.length > 0) {
+      resolvedId = activeSources[0].id;
+      resolvedTitle = activeSources[0].title;
+    }
+    if (!resolvedId) {
+      alert('Document file is not currently available for this reference.');
+      return;
+    }
+    setViewerState({
+      isOpen: true,
+      documentId: resolvedId,
+      documentTitle: resolvedTitle,
+      page: Math.max(1, page),
+    });
+  };
+
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -410,7 +437,9 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                   return (
                     <div
                       key={source.id}
-                      className="p-2.5 rounded-xl bg-[#f9f3eb] flex items-center justify-between group hover:bg-[#ede7df] transition-colors"
+                      onClick={() => openDocumentViewer(source.id, 1, source.title)}
+                      className="p-2.5 rounded-xl bg-[#f9f3eb] flex items-center justify-between group hover:bg-[#ede7df] transition-colors cursor-pointer"
+                      title="Click to view full source document"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className={`w-7 h-7 rounded-lg ${badgeColor} flex items-center justify-center shrink-0`}>
@@ -420,18 +449,23 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                           <span className="text-[12px] font-bold text-[#1d1b17] truncate" title={source.title}>
                             {source.title}
                           </span>
-                          <span className="text-[10px] text-[#4f453f] uppercase font-semibold">
-                            {source.source_type ? `${source.source_type.toUpperCase()} • Attached` : 'Active'}
+                          <span className="text-[10px] text-[#4f453f] uppercase font-semibold flex items-center gap-1">
+                            {source.source_type ? `${source.source_type.toUpperCase()} • Click to view` : 'Active'}
                           </span>
                         </div>
                       </div>
-                      <button
-                        onClick={(e) => handleDeleteSource(source.id, e)}
-                        className="text-[#81756e] hover:text-[#ba1a1a] opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                        title="Remove source"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">close</span>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[15px] text-[#81756e] group-hover:text-[#745948] transition-colors" title="View file">
+                          visibility
+                        </span>
+                        <button
+                          onClick={(e) => handleDeleteSource(source.id, e)}
+                          className="text-[#81756e] hover:text-[#ba1a1a] opacity-0 group-hover:opacity-100 transition-opacity p-1 cursor-pointer"
+                          title="Remove source"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">close</span>
+                        </button>
+                      </div>
                     </div>
                   );
                 })
@@ -615,30 +649,60 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                   >
                     {msg.sender === 'socratic-guide' ? (
                       <div className="flex flex-col gap-3">
-                        <MarkdownRenderer content={msg.text} />
+                        <MarkdownRenderer
+                          content={msg.text}
+                          onCitationClick={(pageNum) => {
+                            const matchingCite = msg.citations?.find((c: any) => c.page === pageNum);
+                            const docId = matchingCite?.document_id || activeSources[0]?.id;
+                            const docTitle = matchingCite?.document_title || activeSources[0]?.title || 'Course Material';
+                            openDocumentViewer(docId, pageNum, docTitle);
+                          }}
+                        />
 
                         {/* Citations */}
                         {msg.citations && msg.citations.length > 0 && (
-                          <div className="mt-2 pt-2 border-t border-[#ede7df] flex flex-col gap-1">
+                          <div className="mt-3 pt-2.5 border-t border-[#ede7df] flex flex-col gap-1.5">
                             <span className="text-[11px] font-bold uppercase tracking-wider text-[#81756e] flex items-center gap-1">
                               <span className="material-symbols-outlined text-[13px] text-[#745948]">
                                 menu_book
                               </span>
-                              Source References:
+                              Source References (Click to view exact page):
                             </span>
                             <div className="flex flex-wrap gap-1.5">
-                              {msg.citations.map((cite: any, cIdx: number) => (
-                                <div
-                                  key={cIdx}
-                                  className="px-2 py-0.5 rounded-lg bg-[#f9f3eb] border border-[#ede7df] text-[11px] text-[#4f453f] flex items-center gap-1"
-                                >
-                                  <span className="font-semibold text-[#1d1b17]">
-                                    {cite.document_title || cite.source || 'Course Material'}
-                                  </span>
-                                  {cite.page && <span>• p. {cite.page}</span>}
-                                  {cite.section && <span>• §{cite.section}</span>}
-                                </div>
-                              ))}
+                              {msg.citations.map((cite: any, cIdx: number) => {
+                                const pageNum = cite.page || 1;
+                                const docId = cite.document_id || activeSources[0]?.id;
+                                const title = cite.document_title || cite.source || activeSources[0]?.title || 'Course Material';
+                                return (
+                                  <button
+                                    key={cIdx}
+                                    type="button"
+                                    onClick={() => openDocumentViewer(docId, pageNum, title)}
+                                    className="px-2.5 py-1 rounded-lg bg-[#f9f3eb] hover:bg-[#ede7df] border border-[#ede7df] hover:border-[#745948]/50 text-[11px] text-[#4f453f] hover:text-[#1d1b17] flex items-center gap-1.5 transition-all cursor-pointer group shadow-2xs"
+                                    title={`Click to open PDF directly at Page ${pageNum}`}
+                                  >
+                                    <span className="material-symbols-outlined text-[13px] text-[#745948] group-hover:scale-110 transition-transform">
+                                      menu_book
+                                    </span>
+                                    <span className="font-semibold text-[#1d1b17] truncate max-w-[220px]">
+                                      {title}
+                                    </span>
+                                    {cite.page && (
+                                      <span className="bg-[#ede7df] group-hover:bg-[#dfd4c5] px-1.5 py-0.2 rounded font-bold text-[#745948]">
+                                        • p. {cite.page}
+                                      </span>
+                                    )}
+                                    {cite.section && (
+                                      <span className="text-[#81756e]">
+                                        • §{cite.section}
+                                      </span>
+                                    )}
+                                    <span className="material-symbols-outlined text-[12px] text-[#81756e] group-hover:text-[#745948]">
+                                      open_in_new
+                                    </span>
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
@@ -911,6 +975,87 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive PDF Document Viewer Modal */}
+      {viewerState && viewerState.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 sm:p-6 animate-fade-in">
+          <div className="bg-white w-full max-w-5xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-[#ede7df]">
+            {/* Modal Header */}
+            <div className="px-5 py-3.5 bg-[#f9f3eb] border-b border-[#ede7df] flex items-center justify-between shrink-0 gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-[#745948] text-white flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-[20px]">menu_book</span>
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <h3 className="text-[14px] font-bold text-[#1d1b17] truncate max-w-xs sm:max-w-md" title={viewerState.documentTitle}>
+                    {viewerState.documentTitle}
+                  </h3>
+                  <span className="text-[11px] text-[#745948] font-semibold flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#1b6d24]"></span>
+                    Document Grounding • Page {viewerState.page}
+                  </span>
+                </div>
+              </div>
+
+              {/* Page Controls & Actions */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center bg-white border border-[#ede7df] rounded-xl px-2 py-1 shadow-2xs gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setViewerState(prev => prev ? { ...prev, page: Math.max(1, prev.page - 1) } : null)}
+                    disabled={viewerState.page <= 1}
+                    className="p-1 rounded-lg hover:bg-[#ede7df] disabled:opacity-30 cursor-pointer transition-colors"
+                    title="Previous Page"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">chevron_left</span>
+                  </button>
+                  <span className="text-xs font-bold text-[#1d1b17] px-1.5 min-w-[55px] text-center">
+                    Page {viewerState.page}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setViewerState(prev => prev ? { ...prev, page: prev.page + 1 } : null)}
+                    className="p-1 rounded-lg hover:bg-[#ede7df] cursor-pointer transition-colors"
+                    title="Next Page"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                  </button>
+                </div>
+
+                <a
+                  href={`/api/documents/${viewerState.documentId}/file#page=${viewerState.page}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#ede7df] border border-[#ede7df] text-[12px] font-bold text-[#1d1b17] flex items-center gap-1.5 transition-all shadow-2xs"
+                  title="Open in new browser tab"
+                >
+                  <span className="material-symbols-outlined text-[15px] text-[#745948]">open_in_new</span>
+                  <span className="hidden sm:inline">Open in Tab</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setViewerState(null)}
+                  className="p-1.5 rounded-xl bg-white hover:bg-[#ede7df] border border-[#ede7df] text-[#81756e] hover:text-[#1d1b17] transition-all cursor-pointer"
+                  title="Close PDF viewer"
+                >
+                  <span className="material-symbols-outlined text-[20px]">close</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body / Embedded PDF */}
+            <div className="flex-1 w-full bg-[#525659] relative">
+              <iframe
+                key={`${viewerState.documentId}-${viewerState.page}`}
+                src={`/api/documents/${viewerState.documentId}/file#page=${viewerState.page}`}
+                className="w-full h-full border-0"
+                title={`PDF Viewer for ${viewerState.documentTitle}`}
+              />
             </div>
           </div>
         </div>

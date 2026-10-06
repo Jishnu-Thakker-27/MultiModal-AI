@@ -36,6 +36,25 @@ router = APIRouter(prefix="/api/conversations", tags=["Conversations"])
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+def clean_chapter_name(title: str) -> str:
+    if not title:
+        return "Study Session"
+    clean = re.sub(r'(\.(pdf|pptx|ppt|mp4|mov|webm|mkv|txt))+$', '', title, flags=re.I).strip()
+    clean = re.sub(r'\s*-\s*', ' - ', clean)
+    clean = clean.replace('_', ' ').strip()
+    return clean
+
+def is_placeholder_title(title: Optional[str]) -> bool:
+    if not title:
+        return True
+    t = title.strip().lower()
+    placeholders = [
+        "new study session", "new socratic inquiry", "new learning session",
+        "new learning inquiry", "new conversation", "new chat", "untitled session",
+        "general", "study session"
+    ]
+    return any(p == t or t.startswith("new ") for p in placeholders)
+
 @router.get("", response_model=List[ConversationResponse])
 def list_conversations(
     user_id: str = "demo_student",
@@ -48,9 +67,20 @@ def list_conversations(
         msgs = repo.get_conversation_messages(c.id)
         docs = repo.get_conversation_documents(c.id)
         last_msg = msgs[-1]["created_at"] if msgs else (c.updated_at or c.created_at or datetime.utcnow())
+        
+        resolved_title = c.title
+        if is_placeholder_title(resolved_title):
+            if docs and docs[0].title:
+                resolved_title = clean_chapter_name(docs[0].title)
+                repo.update_conversation(c.id, title=resolved_title)
+            elif msgs and msgs[0].get("content"):
+                first_q = msgs[0]["content"].strip()
+                resolved_title = first_q[:35] + ("..." if len(first_q) > 35 else "")
+                repo.update_conversation(c.id, title=resolved_title)
+
         res.append(ConversationResponse(
             id=c.id,
-            title=c.title,
+            title=resolved_title or "Study Session",
             course_id=c.course_id,
             topic_name=c.topic_name,
             status=c.status,
@@ -154,9 +184,15 @@ def get_conversation_details(
             "created_at": d.created_at
         })
 
+    resolved_title = conv.title
+    if is_placeholder_title(resolved_title):
+        if documents and documents[0].title:
+            resolved_title = clean_chapter_name(documents[0].title)
+            repo.update_conversation(conv.id, title=resolved_title)
+
     return ConversationDetailResponse(
         id=conv.id,
-        title=conv.title,
+        title=resolved_title or "Study Session",
         course_id=conv.course_id,
         topic_name=conv.topic_name,
         status=conv.status,
@@ -324,6 +360,8 @@ def attach_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     repo.attach_document_to_conversation(conversation_id, document_id)
+    if is_placeholder_title(conv.title):
+        repo.update_conversation(conversation_id, title=clean_chapter_name(doc.title))
     return {"status": "success", "message": f"Document '{doc.title}' attached to conversation."}
 
 @router.post("/{conversation_id}/upload")
@@ -391,8 +429,6 @@ def upload_source_to_conversation(
             chunks_data[i]["embedding"] = emb
 
         repo.add_chunks(chunks_data)
-        # The conversation upload is the primary UI path, so it must populate
-        # the same concept graph used by the tutoring planner.
         from app.knowledge.concept_extractor import extract_and_build_concept_graph
         extract_and_build_concept_graph(
             db=db, course_id=course_id, document_id=doc.id,
@@ -406,8 +442,8 @@ def upload_source_to_conversation(
     repo.attach_document_to_conversation(conversation_id, doc.id)
 
     # Set conversation title to the clean document/chapter name if currently placeholder
-    if conv.title in ["New Chat", "New Learning Session", "Untitled Session", "New Socratic Inquiry", "New Learning Inquiry", "General"]:
-        clean_name = re.sub(r'(\.(pdf|pptx|ppt|mp4|mov|webm|mkv))+$', '', file.filename, flags=re.I)
+    if is_placeholder_title(conv.title):
+        clean_name = clean_chapter_name(file.filename)
         repo.update_conversation(conversation_id, title=clean_name)
 
     return {

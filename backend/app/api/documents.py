@@ -143,6 +143,44 @@ def process_document(document_id: str, db: Session = Depends(get_db)):
         repo.update_document_status(document_id, "Failed", str(e))
         raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
 
+from fastapi.responses import FileResponse
+
+@router.get("/documents/{document_id}/file")
+@router.get("/documents/{document_id}/view")
+def get_document_file(document_id: str, db: Session = Depends(get_db)):
+    doc = db.query(DocModel).filter(DocModel.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_path = doc.file_path
+    if not file_path or not os.path.exists(file_path):
+        candidate1 = os.path.join(settings.UPLOAD_DIR, doc.course_id or "default_course", doc.title)
+        candidate2 = os.path.join(settings.UPLOAD_DIR, "default_course", doc.title)
+        candidate3 = os.path.join(settings.UPLOAD_DIR, os.path.basename(doc.file_path or doc.title))
+        if os.path.exists(candidate1):
+            file_path = candidate1
+        elif os.path.exists(candidate2):
+            file_path = candidate2
+        elif os.path.exists(candidate3):
+            file_path = candidate3
+        else:
+            raise HTTPException(status_code=404, detail=f"Document file not found on disk: {doc.title}")
+
+    media_type = "application/pdf"
+    ext = os.path.splitext(doc.title)[1].lower()
+    if ext in [".pptx", ".ppt"]:
+        media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    elif ext in [".mp4", ".mov", ".webm"]:
+        media_type = "video/mp4"
+
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{os.path.basename(file_path)}"'
+        }
+    )
+
 @router.delete("/documents/{document_id}")
 def delete_document(document_id: str, db: Session = Depends(get_db)):
     repo = Repository(db)
@@ -150,3 +188,4 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
     if not success:
         raise HTTPException(status_code=404, detail="Document not found")
     return {"status": "success", "message": "Document and associated knowledge chunks deleted successfully"}
+

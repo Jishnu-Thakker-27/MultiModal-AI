@@ -48,6 +48,9 @@ class Repository:
     def get_documents_by_course(self, course_id: str) -> List[Document]:
         return self.db.query(Document).filter(Document.course_id == course_id).all()
 
+    def get_document(self, document_id: str) -> Optional[Document]:
+        return self.db.query(Document).filter(Document.id == document_id).first()
+
     def update_document_status(self, document_id: str, status: str, error_message: Optional[str] = None):
         doc = self.db.query(Document).filter(Document.id == document_id).first()
         if doc:

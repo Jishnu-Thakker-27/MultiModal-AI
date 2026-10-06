@@ -7,14 +7,47 @@ from app.providers import llm_router
 
 logger = logging.getLogger("study_companion.rag.generator")
 
-def strip_inline_textual_citations(text: str) -> str:
+def format_sectional_citations(text: str) -> str:
     """
-    Strips LLM-invented inline textual page strings like '[Source: Page 21]' or '(Page 14)'
-    to enforce canonical backend evidence object citation rendering.
+    Normalizes inline and sectional source citations (e.g. '[Source: Page 21]', 'Source: Page 21', 'Page 21')
+    so they render as interactive markdown links [Page X](#page-X) rather than being stripped out.
     """
-    text_clean = re.sub(r'\[Source:\s*[^\]]+\]', '', text, flags=re.I)
-    text_clean = re.sub(r'\(Page\s*\d+(?:–\d+)?\)', '', text_clean, flags=re.I)
-    return text_clean.strip()
+    if not text:
+        return ""
+
+    def repl_bracket(m):
+        full = m.group(1).strip()
+        num_m = re.search(r'\d+', full)
+        target = f"#page-{num_m.group(0)}" if num_m else "#"
+        return f"> 📖 **Source: [{full}]({target})**"
+
+    formatted = re.sub(r'\[Source:\s*([^\]]+)\]', repl_bracket, text, flags=re.I)
+
+    def repl_paren(m):
+        full = m.group(1).strip()
+        num_m = re.search(r'\d+', full)
+        target = f"#page-{num_m.group(0)}" if num_m else "#"
+        return f"> 📖 **Source: [Page {num_m.group(0)}]({target})**"
+
+    formatted = re.sub(r'\((?:Source:\s*)?Page\s*(\d+(?:[–\-]\d+)?)\)', repl_paren, formatted, flags=re.I)
+
+    def repl_bare_line(m):
+        p_num = m.group(2)
+        note = m.group(3) or ""
+        note_clean = note.strip(' •*-')
+        note_str = f" • *{note_clean}*" if note_clean else ""
+        return f"> 📖 **Source: [Page {p_num}](#page-{p_num})**{note_str}"
+
+    formatted = re.sub(
+        r'(?m)^(\s*>*\s*📖?\s*(?:\*\*)?Source:\s*(?:\*\*)?)\s*(?:Page|p\.)?\s*(\d+)(.*)$',
+        repl_bare_line,
+        formatted,
+        flags=re.I
+    )
+
+    formatted = re.sub(r'\[\s*\[([^\]]+)\]\((#[^\)]+)\)\s*\]', r'[\1](\2)', formatted)
+    return formatted.strip()
+
 
 def generate_grounded_answer(
     query: str,
@@ -118,7 +151,7 @@ def generate_grounded_answer(
     )
 
     if provider_response.is_success:
-        clean_content = strip_inline_textual_citations(provider_response.content)
+        clean_content = format_sectional_citations(provider_response.content)
         logger.info(f"Answer generation successful via provider '{provider_response.provider_name}'")
         return clean_content, citations, True
 
