@@ -1,17 +1,42 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
-SYSTEM_PROMPT = """You are an expert AI Study Companion & Pedagogical Tutor.
-Your highest imperatives are:
-1. PEDAGOGICAL TEACHING SEQUENCE: Explain foundational concepts clearly (Definitions, Notation, Formulas, Worked Examples).
-2. SOURCE GROUNDING: Base every educational claim strictly on the provided CONTEXT.
-3. CANONICAL CITATION FORMAT: DO NOT invent fake inline page numbers or textual source tags (such as "[Source: Page 21]" or "(Page X)") in your text response. The backend system automatically constructs and renders canonical source citations from verified document evidence.
+SYSTEM_PROMPT = r"""You are SocraticAI, an elite, inspiring University Tutor and Master Pedagogical Companion.
+Your core teaching philosophy blends the intuitive clarity of Richard Feynman with the rigorous step-by-step structure of an MIT recitation instructor.
 
-TEACHING RULES:
-- When explaining a concept, start with the definition, key notation, and formula before walking through worked examples.
-- If the question is not covered in the context, explicitly state: "This topic is not covered in your uploaded course material."
+YOUR PRIMARY MISSION:
+Do NOT simply act as a robotic search index or regurgitate raw excerpts from the PDF.
+Instead, actively TEACH: explain the intuition behind the concepts, demystify mathematical notation, illuminate why formulas work, walk through worked examples step-by-step, warn about common traps, and stimulate the student's intellect.
+
+CORE PEDAGOGICAL TEACHING RULES:
+1. NATURAL, WARM TUTOR TONE:
+   - NEVER begin with robotic, automated phrases like "Based on your course materials...", "According to the uploaded PDF...", or "Here is the definition...".
+   - Open naturally and warmly: "Let's unpack this together!", "To understand this intuitively, think of...", "Here is the key insight behind this concept...", etc.
+
+2. THE 4-PILLAR MASTER EXPLANATION FRAMEWORK:
+   When explaining a concept, method, or problem, structure your answer using clean Markdown sections:
+   - 💡 **Intuitive Mental Model & Motivation**: Start with plain-English intuition or a vivid real-world analogy BEFORE heavy math. Why was this concept invented? What practical problem does it solve?
+   - 📐 **Core Formulation & Notation Breakdown**: State the formal definition or governing equation from the course context using clean LaTeX. Unpack EVERY symbol in bullet points (e.g. what $x_0, h, p, \Delta y$ actually mean) and explain the mathematical intuition behind why the equation is constructed that way.
+   - 📝 **Guided Step-by-Step Walkthrough**: When worked examples, calculations, or algorithmic steps are relevant, walk through them chronologically with explicit steps (e.g., `#### Step 1: ...`, `#### Step 2: ...`). Annotate the tutor's reasoning at each step so the student understands *why* each calculation is performed.
+   - ⚠️ **Tutor Pro-Tips & Common Pitfalls**: Highlight 1-2 common student traps, boundary constraints, or rules of thumb (e.g., equal interval requirements, sign mistakes, when to pick forward vs. backward differences).
+   - 🎯 **Socratic Check for Understanding**: Conclude with an engaging, thought-provoking question or next step that encourages the student to test their intuition or explore further.
+
+3. MATHEMATICAL & NOTATIONAL PRECISION:
+   - Format all inline math with `$ ... $` and display math blocks with isolated `$$\n...\n$$`.
+   - Never skip intermediate algebraic or arithmetic steps without explaining how you arrived at them.
+
+4. GROUNDING & CANONICAL CITATIONS:
+   - Use the provided COURSE CONTEXT as your factual ground truth for definitions, theorems, formulas, and numbers.
+   - DO NOT invent fake inline page tags like "[Source: Page 4]" or "(Page 12)" in your text response. The backend system automatically renders canonical evidence badges from verified source documents.
+   - If the student's question is entirely missing from the course material, kindly let them know: "This topic is not covered in your uploaded course material," and offer a brief general conceptual hint or guide them back to related topics in their material.
 """
 
-def build_grounded_prompt(query: str, chunks: List[Dict[str, Any]], teaching_plan: Dict[str, Any] = None) -> str:
+def build_grounded_prompt(
+    query: str,
+    chunks: List[Dict[str, Any]],
+    teaching_plan: Optional[Dict[str, Any]] = None,
+    conversation_history: Optional[List[Dict[str, Any]]] = None
+) -> str:
+    # 1. Format Course Material Context
     if not chunks:
         context_str = "No relevant course material chunks were found."
     else:
@@ -24,6 +49,8 @@ def build_grounded_prompt(query: str, chunks: List[Dict[str, Any]], teaching_pla
                 loc_str = f"PPT Slide {c.get('slide_number')}"
             elif source_type == 'video':
                 loc_str = f"Video {c.get('start_time')}"
+            else:
+                loc_str = "Document Source"
 
             extra_meta = []
             if c.get('formula_latex'):
@@ -33,35 +60,77 @@ def build_grounded_prompt(query: str, chunks: List[Dict[str, Any]], teaching_pla
             meta_str = f" | {', '.join(extra_meta)}" if extra_meta else ""
 
             context_blocks.append(
-                f"[Source Chunk {idx}] Document: {c.get('document_title', 'Document')} | Section: {c.get('section', 'General')} | Location: {loc_str}{meta_str}\nContent: {c.get('content', '')}"
+                f"[Source Chunk {idx}] Document: {c.get('document_title', 'Document')} | Section: {c.get('section', 'General')} | Location: {loc_str}{meta_str}\n"
+                f"Content:\n{c.get('content', '')}"
             )
         context_str = "\n\n".join(context_blocks)
 
-    plan_str = ""
+    # 2. Teaching Plan & Pedagogical Directives
+    plan_blocks = []
     if teaching_plan:
-        plan_str = f"TEACHING PLAN:\n- Target Concept: {teaching_plan.get('target_name')}\n- Stage: {teaching_plan.get('teaching_stage')}\n"
-        if teaching_plan.get("teaching_stage") == "DOCUMENT_OVERVIEW" or teaching_plan.get("is_document_summary"):
-            plan_str += (
+        target = teaching_plan.get('target_name', 'the topic')
+        stage = teaching_plan.get('teaching_stage', 'DIRECT_EXPLANATION')
+        tone = teaching_plan.get('tone', 'Intuitive Analogy')
+        plan_blocks.append(f"TEACHING PLAN:\n- Target Concept: {target}\n- Stage: {stage}\n- Preferred Tone: {tone}")
+
+        # Inject tone directive
+        tone_directive = teaching_plan.get("tone_directive")
+        if tone_directive:
+            plan_blocks.append(f"- STYLE GUIDELINE: {tone_directive}")
+
+        if stage == "DOCUMENT_OVERVIEW" or teaching_plan.get("is_document_summary"):
+            plan_blocks.append(
                 "- PEDAGOGICAL DIRECTIVE (DOCUMENT OVERVIEW):\n"
-                "  1. Provide a comprehensive, well-structured overview of the uploaded chapter/document.\n"
-                "  2. State the central mathematical problem, purpose, and key definitions.\n"
-                "  3. Provide an organized breakdown of every major method and topic present in the source context (define each method, explain its core idea and formula).\n"
-                "  4. Conclude with a helpful summary comparison or learning roadmap.\n"
-                "  5. Synthesize clearly for a student. DO NOT dump raw calculation tables or focus narrowly on one worked example.\n"
+                "  1. Provide a comprehensive, inspiring big-picture overview of the uploaded chapter/topic.\n"
+                "  2. Explain the central problem, why it matters, and the core mathematical framework.\n"
+                "  3. Provide an organized breakdown of every key method/technique present in the context (core intuition, conditions, and formula).\n"
+                "  4. Conclude with a helpful comparative summary table or decision matrix showing when to use each method.\n"
+                "  5. Synthesize clearly for a student. Do not just dump raw calculations."
+            )
+        elif stage == "FOUNDATIONS_FIRST":
+            plan_blocks.append(
+                "- PEDAGOGICAL DIRECTIVE (FOUNDATIONS FIRST):\n"
+                "  1. Anchor with an intuitive hook or analogy before diving into formulas.\n"
+                "  2. Define the concept clearly, unpacking each symbol in the notation.\n"
+                "  3. Walk through the core mechanism or worked example step-by-step with tutor annotations.\n"
+                "  4. Highlight common traps or pro-tips.\n"
+                "  5. End with a Socratic check-in question."
+            )
+        elif stage == "SOLVE_PROBLEM":
+            plan_blocks.append(
+                "- PEDAGOGICAL DIRECTIVE (PROBLEM SOLVING):\n"
+                "  1. State the given data, unknown variables, and the recommended approach.\n"
+                "  2. Break down the solution step-by-step with clear arithmetic and reasoning.\n"
+                "  3. Provide a sanity check on the calculated answer."
             )
 
         personalization = teaching_plan.get("personalization_directives", [])
         if personalization:
-            plan_str += "- LEARNER PERSONALIZATION DIRECTIVES:\n"
-            for p in personalization:
-                plan_str += f"  * {p}\n"
+            plan_blocks.append("- LEARNER PERSONALIZATION DIRECTIVES:\n" + "\n".join(f"  * {p}" for p in personalization))
 
-    user_prompt = f"""{plan_str}CONTEXT:
+    plan_str = "\n".join(plan_blocks) + "\n\n" if plan_blocks else ""
+
+    # 3. Format Multi-Turn Conversation History
+    history_str = ""
+    if conversation_history:
+        recent_turns = []
+        for msg in conversation_history[-6:]:
+            role = "Student" if msg.get("sender") == "user" else "Tutor"
+            text = msg.get("content", "").strip()
+            if text:
+                # Truncate very long previous tutor responses to keep prompt concise
+                snippet = text if len(text) <= 400 else text[:400] + "..."
+                recent_turns.append(f"{role}: {snippet}")
+        if recent_turns:
+            history_str = "RECENT CONVERSATION HISTORY (for context continuity):\n" + "\n".join(recent_turns) + "\n\n"
+
+    user_prompt = f"""{plan_str}{history_str}COURSE MATERIAL CONTEXT (Your Verified Ground Truth):
 {context_str}
 
 STUDENT QUESTION:
 {query}
 
-PEDAGOGICAL TUTOR RESPONSE:"""
+PEDAGOGICAL TUTOR RESPONSE (Explain intuitively, unpack notation, guide step-by-step):"""
 
     return user_prompt
+

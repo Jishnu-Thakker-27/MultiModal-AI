@@ -123,6 +123,7 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = "demo_student"
     conversation_id: Optional[str] = None
     question: str = Field(..., example="What is an AVL Tree rotation?")
+    tone: Optional[str] = "Intuitive Analogy"
 
 class CitationSchema(BaseModel):
     source_type: str

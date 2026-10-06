@@ -88,6 +88,7 @@ def create_conversation(
         if not payload.title:
             repo.update_conversation(conv.id, title=question[:40] + ("..." if len(question)>40 else ""))
 
+        intent_info = classify_learning_intent(question)
         learner_profile = repo.get_learner_profile(user_id=user_id, course_id=conv.course_id)
         if intent_info["intent"] in {"OVERVIEW", "DOCUMENT_SUMMARY"}:
             retrieved_chunks = retrieve_document_summary_chunks(db, conversation_id=conv.id, top_k=8)
@@ -97,7 +98,7 @@ def create_conversation(
                 clean_title = re.sub(r'\.(pdf|pptx|docx|txt)$', '', docs[0].title, flags=re.I)
                 doc_title = re.sub(r'[-_–]', ' ', clean_title).strip()
             pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO", "learner_profile": learner_profile}
-            teaching_plan = {"target_name": doc_title, "coverage_state": "STATE_C_SUFFICIENT_INFO", "teaching_stage": "DOCUMENT_OVERVIEW", "is_document_summary": True}
+            teaching_plan = {"target_name": doc_title, "coverage_state": "STATE_C_SUFFICIENT_INFO", "teaching_stage": "DOCUMENT_OVERVIEW", "is_document_summary": True, "tone": "Intuitive Analogy"}
         else:
             pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
                 course_id=conv.course_id or "default_course", user_id=user_id, query=question,
@@ -112,8 +113,8 @@ def create_conversation(
                 is_introductory=pedagogical_context.get("is_introductory_request", True), top_k=5,
                 user_id=user_id, learner_profile=learner_profile
             )
-            teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks)
-        raw_answer, citations, is_grounded = generate_grounded_answer(question, retrieved_chunks, teaching_plan)
+            teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks, tone="Intuitive Analogy")
+        raw_answer, citations, is_grounded = generate_grounded_answer(question, retrieved_chunks, teaching_plan, conversation_history=[])
         answer, citations = validate_tutor_response(raw_answer, pedagogical_context.get("target_name"), retrieved_chunks, citations)
         repo.save_chat_messages(conv.id, question, answer, citations)
 
@@ -217,6 +218,7 @@ def chat_in_conversation(
 
     question = payload.question.strip()
     user_id = payload.user_id or "demo_student"
+    tone = payload.tone or "Intuitive Analogy"
 
     if conv.title in ["New Chat", "New Learning Session", "Untitled Session"]:
         new_title = question[:35] + ("..." if len(question) > 35 else "")
@@ -238,7 +240,7 @@ def chat_in_conversation(
             doc_title = re.sub(r'[-_–]', ' ', clean_title).strip()
         pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO", "learner_profile": learner_profile}
         retrieved_chunks = retrieve_document_summary_chunks(db, conversation_id=conversation_id, top_k=8)
-        teaching_plan = {"target_name": doc_title, "coverage_state": "STATE_C_SUFFICIENT_INFO", "teaching_stage": "DOCUMENT_OVERVIEW", "is_document_summary": True}
+        teaching_plan = {"target_name": doc_title, "coverage_state": "STATE_C_SUFFICIENT_INFO", "teaching_stage": "DOCUMENT_OVERVIEW", "is_document_summary": True, "tone": tone}
     else:
         pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
             course_id=conv.course_id or "default_course", user_id=user_id, query=question,
@@ -253,10 +255,12 @@ def chat_in_conversation(
             is_introductory=pedagogical_context.get("is_introductory_request", True), top_k=5,
             user_id=user_id, learner_profile=learner_profile
         )
-        teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks)
+        teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks, tone=tone)
 
-    # 5. Grounded Tutor Response Generation (3-State Model)
-    raw_answer, citations, is_grounded = generate_grounded_answer(question, retrieved_chunks, teaching_plan)
+    # 5. Grounded Tutor Response Generation (3-State Model with Conversation History)
+    raw_answer, citations, is_grounded = generate_grounded_answer(
+        question, retrieved_chunks, teaching_plan, conversation_history=messages
+    )
 
     # 6. Final Answer Validation
     answer, citations = validate_tutor_response(raw_answer, pedagogical_context.get("target_name"), retrieved_chunks, citations)

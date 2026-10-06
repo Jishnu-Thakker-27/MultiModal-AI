@@ -20,7 +20,8 @@ def generate_grounded_answer(
     query: str,
     chunks: List[Dict[str, Any]],
     teaching_plan: Dict[str, Any] = None,
-    image_paths: List[str] = None
+    image_paths: List[str] = None,
+    conversation_history: List[Dict[str, Any]] = None
 ) -> Tuple[str, List[Dict[str, Any]], bool]:
     """
     Multimodal Document-Grounded Answer Generator.
@@ -43,14 +44,13 @@ def generate_grounded_answer(
     # Assess max final score of retrieved chunks
     max_score = max([c.get("final_score", 0.0) for c in chunks]) if chunks else 0.0
     # A missing target must never be sent to an LLM just because generic words
-    # inflated a retriever score.  Document summaries use STATE_C explicitly.
+    # inflated a retriever score. Document summaries use STATE_C explicitly.
     if coverage_state == "STATE_A_NOT_FOUND":
         return (
             f"This topic '**{target_name}**' is not covered in your uploaded course material. I couldn't find enough information in the provided documents.",
             [],
             False
         )
-
 
     # Filter out cover metadata chunks if substantive content chunks exist
     substantive_chunks = [c for c in chunks if c.get("page_type") != "COVER_METADATA" and len(c.get("content", "").split()) > 10]
@@ -71,22 +71,22 @@ def generate_grounded_answer(
     citations = extract_citations_from_chunks(effective_chunks)
 
     # 2. STATE B: PARTIAL INFO (Subtopics available, but no standalone definition)
+    # Even in partial info, synthesize with tutor warmth and pedagogical scaffolding:
     if coverage_state == "STATE_B_PARTIAL_INFO":
         page_num = top_chunk.get("page_number") or 1
         page_end = top_chunk.get("page_end") or page_num
         page_label = f"pp. {page_num}–{page_end}" if page_end > page_num else f"Page {page_num}"
         doc_title = top_chunk.get("document_title", "Course Document")
-        synthesized_answer = (
-            f"## {target_name}\n\n"
-            f"The uploaded course document **{doc_title}** ({page_label}) covers specific subtopics for **{target_name}**, "
-            f"but does not contain a standalone introductory definition.\n\n"
-            f"### Available Subtopic Material ({doc_title} · {page_label})\n\n"
-            f"{top_text}\n"
+        
+        # Build prompt to synthesize subtopic material pedagogically
+        grounded_prompt = build_grounded_prompt(
+            query, effective_chunks, teaching_plan, conversation_history=conversation_history
         )
-        return strip_inline_textual_citations(synthesized_answer), citations, True
-
-    # 3. Build grounded prompt with document evidence and pedagogical directives
-    grounded_prompt = build_grounded_prompt(query, effective_chunks, teaching_plan)
+    else:
+        # 3. Build grounded prompt with document evidence and pedagogical directives
+        grounded_prompt = build_grounded_prompt(
+            query, effective_chunks, teaching_plan, conversation_history=conversation_history
+        )
 
     # 3. Route to Multi-Provider LLM Architecture with Automatic Priority Failover
     logger.info(f"Generating answer via LLM Provider Router for query: '{query[:50]}...'")

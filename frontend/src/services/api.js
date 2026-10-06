@@ -80,8 +80,8 @@ export const deleteConversation = async (conversationId) => {
   return response.data;
 };
 
-export const postConversationChat = async (conversationId, question) => {
-  const response = await api.post(`/conversations/${conversationId}/chat`, { question });
+export const postConversationChat = async (conversationId, question, tone = 'Intuitive Analogy') => {
+  const response = await api.post(`/conversations/${conversationId}/chat`, { question, tone });
   return response.data;
 };
 

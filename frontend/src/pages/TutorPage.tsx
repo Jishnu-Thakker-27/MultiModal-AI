@@ -269,7 +269,7 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
         setActiveTitle(newConv.title || userText.slice(0, 35));
       }
 
-      const res = await postConversationChat(convId, userText);
+      const res = await postConversationChat(convId, userText, pedagogyTone);
       const lastMessage = res?.messages?.slice(-1)[0]; const answerText = res?.answer || res?.content || lastMessage?.content || (typeof res === 'string' ? res : '');
 
       if (answerText) {
