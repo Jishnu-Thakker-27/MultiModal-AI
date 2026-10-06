@@ -220,7 +220,7 @@ def chat_in_conversation(
     user_id = payload.user_id or "demo_student"
     tone = payload.tone or "Intuitive Analogy"
 
-    if conv.title in ["New Chat", "New Learning Session", "Untitled Session"]:
+    if conv.title in ["New Chat", "New Learning Session", "Untitled Session", "New Socratic Inquiry", "New Learning Inquiry"]:
         new_title = question[:35] + ("..." if len(question) > 35 else "")
         repo.update_conversation(conversation_id, title=new_title)
 
@@ -404,6 +404,11 @@ def upload_source_to_conversation(
         chunks_data = []
 
     repo.attach_document_to_conversation(conversation_id, doc.id)
+
+    # Set conversation title to the clean document/chapter name if currently placeholder
+    if conv.title in ["New Chat", "New Learning Session", "Untitled Session", "New Socratic Inquiry", "New Learning Inquiry", "General"]:
+        clean_name = re.sub(r'(\.(pdf|pptx|ppt|mp4|mov|webm|mkv))+$', '', file.filename, flags=re.I)
+        repo.update_conversation(conversation_id, title=clean_name)
 
     return {
         "status": "success",

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ScreenType } from '../types';
 import { getConversations } from '../services/api';
 
@@ -110,20 +110,6 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0" ref={dropdownRef}>
-            {onToggleTactileAssist && (
-              <button
-                onClick={onToggleTactileAssist}
-                title="Toggle AAA Accessibility Mode"
-                className={`p-2 rounded-full border transition-all text-[12px] font-bold flex items-center gap-1 cursor-pointer ${
-                  tactileAssistActive
-                    ? 'bg-[#745948] text-white border-[#745948]'
-                    : 'bg-[#f9f3eb] text-[#745948] border-[#ede7df] hover:bg-[#ede7df]'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[18px]">accessibility</span>
-              </button>
-            )}
-
             <div className="relative">
               <button
                 onClick={() => setProfileOpen(!profileOpen)}
