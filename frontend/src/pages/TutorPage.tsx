@@ -170,7 +170,26 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
         setActiveTitle(newConv.title);
       }
 
-      const res = await uploadSourceToConversation(convId, file);
+      let res;
+      try {
+        res = await uploadSourceToConversation(convId, file);
+      } catch (uploadErr: any) {
+        // If the conversation was deleted or expired on the backend (404), self-heal by creating a new conversation
+        if (uploadErr?.response?.status === 404) {
+          const freshConv = await createConversation({
+            title: `Study Session: ${file.name.slice(0, 30)}`,
+            course_id: 'default_course',
+            topic_name: 'Course Material',
+          });
+          convId = freshConv.id;
+          setActiveConvId(convId);
+          setActiveTitle(freshConv.title);
+          res = await uploadSourceToConversation(convId, file);
+        } else {
+          throw uploadErr;
+        }
+      }
+
       setUploadSuccess(`Successfully indexed "${file.name}"! Extracted ${res.chunks_count || 'evidence'} chunks into the RAG knowledge graph.`);
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -222,7 +241,23 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
       );
       const virtualFile = new File([fileBlob], cleanName, { type: 'application/pdf' });
 
-      await uploadSourceToConversation(convId, virtualFile);
+      try {
+        await uploadSourceToConversation(convId, virtualFile);
+      } catch (linkErr: any) {
+        if (linkErr?.response?.status === 404) {
+          const freshConv = await createConversation({
+            title: linkTitle || 'Web / Lecture Source Session',
+            course_id: 'default_course',
+            topic_name: 'Course Material',
+          });
+          convId = freshConv.id;
+          setActiveConvId(convId);
+          setActiveTitle(freshConv.title);
+          await uploadSourceToConversation(convId, virtualFile);
+        } else {
+          throw linkErr;
+        }
+      }
       const details = await getConversationDetails(convId);
       if (details?.sources) {
         setActiveSources(details.sources);
