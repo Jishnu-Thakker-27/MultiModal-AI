@@ -76,21 +76,27 @@ def extract_pdf_content(
         if sec_match:
             current_section = sec_match.group(1).strip()
 
-        # 2. Table extraction
+        # 2. Table extraction (only run when structural table patterns or delimiters exist in page text)
         table_text = ""
         has_tables = False
-        try:
-            tabs = page.find_tables()
-            if tabs.tables:
-                has_tables = True
-                table_strings = []
-                for t in tabs.tables:
-                    df = t.extract()
-                    table_strings.append(" | ".join([str(cell) for row in df for cell in row if cell]))
-                if table_strings:
-                    table_text = "\n[Extracted Table Data:\n" + "\n".join(table_strings) + "]"
-        except Exception as t_err:
-            logger.debug(f"Table extraction notice on page {actual_page}: {t_err}")
+        has_tabular_patterns = (
+            "\t" in full_text
+            or "|" in full_text
+            or any(k in full_text.lower() for k in ["table", "s.no", "sl.no", "value of x", "col 1", "column 1", "data:"])
+        )
+        if has_tabular_patterns:
+            try:
+                tabs = page.find_tables()
+                if tabs.tables:
+                    has_tables = True
+                    table_strings = []
+                    for t in tabs.tables:
+                        df = t.extract()
+                        table_strings.append(" | ".join([str(cell) for row in df for cell in row if cell]))
+                    if table_strings:
+                        table_text = "\n[Extracted Table Data:\n" + "\n".join(table_strings) + "]"
+            except Exception as t_err:
+                logger.debug(f"Table extraction notice on page {actual_page}: {t_err}")
 
         # 3. Visual element detection & OCR fallback (only for purely scanned pages with almost zero text)
         image_list = page.get_images()

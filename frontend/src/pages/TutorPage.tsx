@@ -106,7 +106,7 @@ function extractFollowUpOptions(text: string): string[] {
   return [
     'I am completely new to this topic, guide me step-by-step',
     'I have a rough idea, test my understanding',
-    'Skip hints & explain directly from basics to advanced',
+    'Skip conversation and start explaining',
   ];
 }
 
@@ -811,55 +811,80 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                           }}
                         />
 
-                        {/* Citations */}
-                        {msg.citations && msg.citations.length > 0 && (
+                        {/* Citations & Source References */}
+                        {((msg.citations && msg.citations.length > 0) || (activeSources && activeSources.length > 0)) && (
                           <div className="mt-4 pt-3.5 border-t border-[#ede7df] flex flex-col gap-2">
                             <span className="text-[12px] font-extrabold uppercase tracking-wider text-[#745948] flex items-center gap-1.5">
                               <span className="material-symbols-outlined text-[15px] text-[#745948]">
                                 menu_book
                               </span>
-                              Source References (Click to view exact page):
+                              Source References & Citations (Click to view exact page):
                             </span>
                             <div className="flex flex-wrap gap-2">
-                              {msg.citations.map((cite: any, cIdx: number) => {
-                                const pageNum = cite.page || 1;
-                                const docId = cite.document_id || activeSources[0]?.id;
-                                const title = cite.document_title || cite.source || activeSources[0]?.title || 'Course Material';
-                                return (
+                              {msg.citations && msg.citations.length > 0 ? (
+                                msg.citations.map((cite: any, cIdx: number) => {
+                                  const pageNum = cite.page || 1;
+                                  const docId = cite.document_id || activeSources[0]?.id;
+                                  const title = cite.document_title || cite.source || activeSources[0]?.title || 'Course Material';
+                                  return (
+                                    <button
+                                      key={cIdx}
+                                      type="button"
+                                      onClick={() => openDocumentViewer(docId, pageNum, title)}
+                                      className="px-3 py-1.5 rounded-xl bg-[#fbf8f5] hover:bg-[#f3ebe0] border border-[#ede7df] hover:border-[#745948]/50 text-[11px] sm:text-[12px] text-[#4f453f] hover:text-[#1d1b17] flex items-center gap-1.5 transition-all cursor-pointer group shadow-2xs hover:shadow-xs font-medium"
+                                      title={`Click to open source directly at Page ${pageNum}`}
+                                    >
+                                      <span className="material-symbols-outlined text-[13px] text-[#745948] group-hover:scale-110 transition-transform">
+                                        menu_book
+                                      </span>
+                                      <span className="font-bold text-[#1d1b17] truncate max-w-[200px]">
+                                        {title}
+                                      </span>
+                                      {cite.page && (
+                                        <span className="bg-[#ede7df] group-hover:bg-[#dfd4c5] px-1.5 py-0.5 rounded font-black text-[#745948] text-[10px]">
+                                          • p. {cite.page}
+                                        </span>
+                                      )}
+                                      {cite.section && (
+                                        <span className="text-[#81756e] text-[10px]">
+                                          • §{cite.section}
+                                        </span>
+                                      )}
+                                      <span className="material-symbols-outlined text-[12px] text-[#81756e] group-hover:text-[#745948]">
+                                        open_in_new
+                                      </span>
+                                    </button>
+                                  );
+                                })
+                              ) : (
+                                activeSources.map((source, sIdx) => (
                                   <button
-                                    key={cIdx}
+                                    key={sIdx}
                                     type="button"
-                                    onClick={() => openDocumentViewer(docId, pageNum, title)}
-                                    className="px-2.5 py-1 rounded-lg bg-[#fbf8f5] hover:bg-[#f3ebe0] border border-[#ede7df] hover:border-[#745948]/50 text-[11px] sm:text-[12px] text-[#4f453f] hover:text-[#1d1b17] flex items-center gap-1.5 transition-all cursor-pointer group shadow-2xs hover:shadow-xs font-medium"
-                                    title={`Click to open PDF directly at Page ${pageNum}`}
+                                    onClick={() => openDocumentViewer(source.id, 1, source.title)}
+                                    className="px-3 py-1.5 rounded-xl bg-[#fbf8f5] hover:bg-[#f3ebe0] border border-[#ede7df] hover:border-[#745948]/50 text-[11px] sm:text-[12px] text-[#4f453f] hover:text-[#1d1b17] flex items-center gap-1.5 transition-all cursor-pointer group shadow-2xs hover:shadow-xs font-medium"
+                                    title="Click to view attached course source"
                                   >
-                                    <span className="material-symbols-outlined text-[13px] text-[#745948] group-hover:scale-110 transition-transform">
+                                    <span className="material-symbols-outlined text-[13px] text-[#745948]">
                                       menu_book
                                     </span>
-                                    <span className="font-bold text-[#1d1b17] truncate max-w-[200px]">
-                                      {title}
+                                    <span className="font-bold text-[#1d1b17] truncate max-w-[220px]">
+                                      {source.title}
                                     </span>
-                                    {cite.page && (
-                                      <span className="bg-[#ede7df] group-hover:bg-[#dfd4c5] px-1.5 py-0.2 rounded font-black text-[#745948] text-[10px]">
-                                        • p. {cite.page}
-                                      </span>
-                                    )}
-                                    {cite.section && (
-                                      <span className="text-[#81756e] text-[10px]">
-                                        • §{cite.section}
-                                      </span>
-                                    )}
-                                    <span className="material-symbols-outlined text-[12px] text-[#81756e] group-hover:text-[#745948]">
+                                    <span className="bg-[#ede7df] px-1.5 py-0.5 rounded font-black text-[#745948] text-[10px]">
+                                      • Attached Source
+                                    </span>
+                                    <span className="material-symbols-outlined text-[12px] text-[#81756e]">
                                       open_in_new
                                     </span>
                                   </button>
-                                );
-                              })}
+                                ))
+                              )}
                             </div>
                           </div>
                         )}
 
-                        {/* Interactive Next Learning Topic Buttons */}
+                        {/* Interactive Next Learning Topic Buttons (Vertically Stacked: 1, 2, 3) */}
                         {msg.followUps && msg.followUps.length > 0 && (
                           <div className="mt-5 pt-4 border-t border-[#ede7df] flex flex-col gap-3">
                             <div className="flex items-center justify-between">
@@ -882,21 +907,23 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                                 </button>
                               )}
                             </div>
-                            <div className="flex flex-wrap gap-2.5">
+                            <div className="flex flex-col gap-2.5 w-full">
                               {msg.followUps.map((topicOpt, fIdx) => (
                                 <button
                                   key={fIdx}
                                   type="button"
                                   disabled={isLoadingApi}
                                   onClick={() => handleSendMessage(topicOpt)}
-                                  className="px-4 py-3 rounded-2xl bg-gradient-to-r from-[#fdfbf9] to-[#f9f3eb] hover:from-[#f9e5d9] hover:to-[#f3cfba] text-[#5e4334] hover:text-[#38261c] border border-[#e8dfd5] hover:border-[#dfb59d] font-bold text-[14px] sm:text-[15px] shadow-xs hover:shadow-md flex items-center gap-2.5 transition-all cursor-pointer group active:scale-98 disabled:opacity-50"
-                                  title={`Click to learn: ${topicOpt}`}
+                                  className="w-full px-4 py-3 rounded-2xl bg-gradient-to-r from-[#fdfbf9] to-[#f9f3eb] hover:from-[#f9e5d9] hover:to-[#f3cfba] text-[#5e4334] hover:text-[#38261c] border border-[#e8dfd5] hover:border-[#dfb59d] font-bold text-[14px] sm:text-[15px] shadow-xs hover:shadow-md flex items-center justify-between gap-3 transition-all cursor-pointer group active:scale-98 disabled:opacity-50 text-left"
+                                  title={`Click to select: ${topicOpt}`}
                                 >
-                                  <span className="w-6 h-6 rounded-lg bg-[#ede7df] group-hover:bg-[#dfd4c5] text-[#745948] flex items-center justify-center text-[11px] font-black shrink-0">
-                                    {fIdx + 1}
-                                  </span>
-                                  <span className="truncate max-w-[320px]">{topicOpt}</span>
-                                  <span className="material-symbols-outlined text-[16px] text-[#81756e] group-hover:text-[#745948] group-hover:translate-x-1 transition-transform">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <span className="w-6 h-6 rounded-lg bg-[#ede7df] group-hover:bg-[#dfd4c5] text-[#745948] flex items-center justify-center text-[12px] font-black shrink-0">
+                                      {fIdx + 1}
+                                    </span>
+                                    <span className="whitespace-normal break-words">{topicOpt}</span>
+                                  </div>
+                                  <span className="material-symbols-outlined text-[18px] text-[#81756e] group-hover:text-[#745948] group-hover:translate-x-1 transition-transform shrink-0">
                                     arrow_forward
                                   </span>
                                 </button>

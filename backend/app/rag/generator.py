@@ -81,7 +81,7 @@ def generate_grounded_answer(
     coverage_state = teaching_plan.get("coverage_state", "STATE_C_SUFFICIENT_INFO") if teaching_plan else "STATE_C_SUFFICIENT_INFO"
 
     teaching_stage = teaching_plan.get("teaching_stage", "DIRECT_EXPLANATION") if teaching_plan else "DIRECT_EXPLANATION"
-    is_intro_probe = teaching_stage in {"SOCRATIC_LAYER_1_PROBE", "SOCRATIC_LAYER_2_HINT_1", "SOCRATIC_LAYER_3_HINT_2", "SOCRATIC_LAYER_4_HINT_3"}
+    is_intro_probe = teaching_stage in {"SOCRATIC_LAYER_1_PROBE", "SOCRATIC_LAYER_2_HINT_1", "SOCRATIC_LAYER_3_HINT_2", "SOCRATIC_LAYER_4_HINT_3", "SIMPLIFIED_ANALOGY_BREAKDOWN"}
     is_pedagogical_track = teaching_stage.startswith("CURRICULUM_STEP") or teaching_stage in {"FOUNDATIONS_FIRST", "DIFFERENCE_OPERATORS", "INTERPOLATION_FORMULA"}
 
     # 1. Post-Retrieval Evidence Assessment
@@ -131,8 +131,8 @@ def generate_grounded_answer(
 
     # Canonical evidence citation extraction from effective chunks used
     teaching_stage = teaching_plan.get("teaching_stage", "DIRECT_EXPLANATION") if teaching_plan else "DIRECT_EXPLANATION"
-    is_intro_probe = teaching_stage in {"SOCRATIC_LAYER_1_PROBE", "SOCRATIC_LAYER_2_HINT_1", "SOCRATIC_LAYER_3_HINT_2", "SOCRATIC_LAYER_4_HINT_3"}
-    citations = [] if is_intro_probe else extract_citations_from_chunks(effective_chunks)
+    is_intro_probe = teaching_stage in {"SOCRATIC_LAYER_1_PROBE", "SOCRATIC_LAYER_2_HINT_1", "SOCRATIC_LAYER_3_HINT_2", "SOCRATIC_LAYER_4_HINT_3", "SIMPLIFIED_ANALOGY_BREAKDOWN"}
+    citations = extract_citations_from_chunks(effective_chunks)
 
     # 2. STATE B: PARTIAL INFO (Subtopics available, but no standalone definition)
     # Even in partial info, synthesize with tutor warmth and pedagogical scaffolding:
@@ -207,10 +207,25 @@ def generate_grounded_answer(
                 f"### 🗺️ Quick Options\n"
                 f"- [I am completely new to this topic, guide me step-by-step from zero]\n"
                 f"- [I have a rough idea, test my understanding]\n"
-                f"- [Skip hints & explain directly from basics to advanced]"
+                f"- [Skip conversation and start explaining]"
             )
             logger.info("Delivering offline pedagogical intro probe (Layer 1)")
-            return fallback_intro, [], True
+            return fallback_intro, citations, True
+
+        elif teaching_stage == "SIMPLIFIED_ANALOGY_BREAKDOWN":
+            from app.tutor.teaching_planner import get_topic_simplified_kid_explanation
+            simplified_data = get_topic_simplified_kid_explanation(target_name)
+            options_text = "\n".join([f"- [{opt}]" for opt in simplified_data["options"]])
+            fallback_simplified = (
+                f"I completely understand! Let's throw away all the textbook talk and make this super simple with a fun, clear picture:\n\n"
+                f"{simplified_data['heading']}\n\n"
+                f"{simplified_data['explanation']}\n\n"
+                f"{simplified_data['challenge']}\n\n"
+                f"### 🗺️ Quick Options\n"
+                f"{options_text}"
+            )
+            logger.info(f"Delivering simplified 5-year-old kid breakdown for '{target_name}'")
+            return fallback_simplified, citations, True
 
         elif teaching_stage == "SOCRATIC_LAYER_2_HINT_1":
             from app.tutor.teaching_planner import get_topic_groundup_explanation
@@ -226,7 +241,7 @@ def generate_grounded_answer(
                 f"{options_text}"
             )
             logger.info(f"Delivering ground-up foundational explanation and practice challenge for '{target_name}'")
-            return fallback_explanation, [], True
+            return fallback_explanation, citations, True
 
         elif teaching_stage == "SOCRATIC_LAYER_3_HINT_2":
             from app.tutor.teaching_planner import get_topic_operational_mechanics
@@ -241,7 +256,7 @@ def generate_grounded_answer(
                 f"{options_text}"
             )
             logger.info(f"Delivering operational mechanics and algorithmic execution for '{target_name}' (Turn 2)")
-            return fallback_mechanics, [], True
+            return fallback_mechanics, citations, True
 
         elif teaching_stage == "SOCRATIC_LAYER_4_HINT_3":
             from app.tutor.teaching_planner import get_topic_synthesis_mastery
@@ -256,7 +271,7 @@ def generate_grounded_answer(
                 f"{options_text}"
             )
             logger.info(f"Delivering advanced synthesis and mastery verification for '{target_name}' (Turn 3)")
-            return fallback_synthesis, [], True
+            return fallback_synthesis, citations, True
 
     # 5. Zero Copy-Paste Fallback: If ALL LLM providers fail or are exhausted on non-socratic turns, return transparent service notification
     logger.error(f"All LLM Providers failed. Error: {provider_response.error_message}")

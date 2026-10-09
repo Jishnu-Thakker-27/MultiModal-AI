@@ -32,6 +32,18 @@ def on_startup():
     init_db()
     logger.info("Database initialized successfully.")
 
+    import threading
+    def _prewarm_models():
+        try:
+            from app.rag.embeddings import get_sentence_transformer_model
+            logger.info("Pre-warming SentenceTransformer embeddings in background...")
+            get_sentence_transformer_model()
+            logger.info("SentenceTransformer model successfully pre-warmed.")
+        except Exception as e:
+            logger.warning(f"Could not prewarm SentenceTransformer model: {e}")
+
+    threading.Thread(target=_prewarm_models, daemon=True).start()
+
 import os
 from fastapi.staticfiles import StaticFiles
 

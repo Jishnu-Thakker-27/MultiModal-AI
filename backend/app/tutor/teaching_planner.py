@@ -82,70 +82,40 @@ def get_topic_opening_hook(target_name: str, domain: str = "mathematics") -> str
 def get_topic_groundup_explanation(target_name: str, domain: str = "mathematics") -> Dict[str, Any]:
     """
     Returns a rich, domain-accurate, ground-up conceptual explanation and practice challenge
-    tailored specifically to the topic. Eliminates generic templates and ensures thorough teaching before solving.
+    tailored specifically to the topic. Eliminates dry textbook language and leads with intuitive,
+    5-year-old kid analogies (ELI5 first) before connecting to exact mathematical concepts.
     """
     name_low = target_name.lower().strip()
 
-    if any(k in name_low for k in ["root", "algebraic and transcendental", "algebraic", "transcendental", "bisection", "newton-raphson", "regula-falsi", "secant"]):
-        return {
-            "heading": "### 🎯 Core Conceptual Foundation: Roots of Equations",
-            "explanation": (
-                "When solving mathematical models in science and engineering, we frequently arrive at equations written in the standard form:\n\n"
-                "$$\\quad f(x) = 0$$\n\n"
-                "A **root** (also known as a *zero*) of this equation is any numerical value $x = \\alpha$ that satisfies this relation, meaning $f(\\alpha) = 0$. "
-                "Geometrically, if you plot the curve $y = f(x)$ on a coordinate plane, the roots correspond precisely to the **points where the curve intersects or touches the horizontal x-axis**.\n\n"
-                "In mathematics, equations naturally divide into two major families:\n"
-                "1. **Algebraic Equations**: Formed purely from finite polynomial terms ($a_n x^n + a_{n-1} x^{n-1} + \\dots + a_0 = 0$), such as $x^3 - 4x + 1 = 0$.\n"
-                "2. **Transcendental Equations**: Contain non-algebraic mathematical functions—such as trigonometric terms ($\\sin x, \\cos x$), exponentials ($e^x$), or logarithms ($\\ln x$), like $x e^x - 1 = 0$ or $\\cos x - x = 0$.\n\n"
-                "**Why do we need Numerical Methods?**\n"
-                "While linear and quadratic equations can be solved with exact paper-and-pencil formulas (like the quadratic formula), the famous Abel-Ruffini theorem proves that there is no general algebraic formula for polynomials of degree $5$ or higher. "
-                "Furthermore, transcendental equations almost never possess closed-form algebraic solutions. "
-                "To overcome this, engineers and computational scientists use **iterative numerical methods** (such as the Bisection Method, Regula-Falsi, and Newton-Raphson) to systematically zoom in on roots to any desired decimal precision.\n\n"
-                "**The Guiding Theorem (Intermediate Value Theorem)**:\n"
-                "Every root-finding process begins with bracket identification: if a continuous curve $f(x)$ changes sign across an interval $[a, b]$—meaning $f(a)$ and $f(b)$ have opposite signs ($f(a) \\cdot f(b) < 0$)—then the curve must cross the x-axis at least once, guaranteeing that a real root exists between $a$ and $b$."
-            ),
-            "challenge": (
-                "**Now, let's put this into practice together!**\n\n"
-                "Consider the polynomial equation:\n"
-                "$$\\quad f(x) = x^3 - x - 1 = 0$$\n\n"
-                "Let's test the boundary values at $x = 1$ and $x = 2$:\n"
-                "- $f(1) = (1)^3 - 1 - 1 = -1$ (negative)\n"
-                "- $f(2) = (2)^3 - 2 - 1 = 5$ (positive)\n\n"
-                "Because the sign changes from negative to positive, a root is guaranteed to lie inside $[1, 2]$. "
-                "Now evaluate the midpoint $x = 1.5$:\n"
-                "$$f(1.5) = (1.5)^3 - 1.5 - 1 = 3.375 - 1.5 - 1 = 0.875$$\n\n"
-                "Notice that $f(1.5)$ is **positive** ($+0.875$). Based on the sign change rule ($f(a) \\cdot f(b) < 0$), in which subinterval must the root now lie: **$[1, 1.5]$** or **$[1.5, 2]$**?"
-            ),
-            "options": [
-                "The root lies in [1, 1.5]",
-                "The root lies in [1.5, 2]",
-                "Let's walk through the interval bracket step-by-step"
-            ]
-        }
-    elif any(k in name_low for k in ["probability", "distribution", "random variable"]):
+    if any(k in name_low for k in ["probability", "distribution", "random variable"]):
         return {
             "heading": f"### 🎯 Core Conceptual Foundation: {target_name}",
             "explanation": (
-                f"In probability theory, when we perform an experiment, we rarely care about raw abstract descriptions—we care about measurable numerical quantities. "
-                f"A **random variable** $X$ translates real-world outcomes into numbers (for example, the number of successful transactions in an hour, the lifespan of a battery, or temperature variations).\n\n"
-                f"A **{target_name}** is the complete mathematical rule that assigns a probability to every possible value the random variable can take. "
-                f"Rather than looking at a single chance event in isolation, it provides the total blueprint of uncertainty.\n\n"
-                f"Every probability distribution is strictly bound by two fundamental mathematical axioms:\n"
-                f"1. **Non-negativity & Bounded Scale**: Every individual likelihood must be non-negative: $0 \\le P(X = x) \\le 1$.\n"
-                f"2. **Total Certainty**: Across all possible mutually exclusive outcomes, the total probability must equal exactly $1$:\n"
-                f"$$\\quad \\sum P(X = x) = 1 \\quad \\text{{(for discrete)}}, \\qquad \\int_{{-\\infty}}^{{\\infty}} f(x)dx = 1 \\quad \\text{{(for continuous)}}$$\n\n"
-                f"Distributions divide into **Discrete** (countable values like coin tosses or defect counts, modeled by a PMF) and **Continuous** (measurable values like time or height, modeled by a PDF where probability is measured as area under the curve)."
+                "**Imagine you have a big clear glass jar filled with 100 yummy jellybeans**:\n"
+                "- 50 sweet strawberry red jellybeans\n"
+                "- 30 blueberry blue jellybeans\n"
+                "- 20 lemon yellow jellybeans\n\n"
+                "If you close your eyes and reach in to pick one, how likely are you to pull out a strawberry red one? "
+                "That's **50 chances out of 100** ($50\\%$, or $0.50$)!\n\n"
+                f"That is the foundational secret behind **{target_name}**! "
+                "A **probability distribution** is simply the complete menu or recipe card of that jar—it tells you every treat you could possibly draw, and exactly how likely each one is.\n\n"
+                "In science, data, and mathematics, every distribution follows **two common-sense golden rules**:\n"
+                "1. **No Negative Candies**: You can never have $-5$ candies in the jar! So every probability is always between $0$ (impossible) and $1$ (guaranteed certainty): $0 \\le P(X) \\le 1$.\n"
+                "2. **The Whole Jar Adds to 100%**: If you add up the chances of getting red, blue, or yellow, they always total exactly $100\\%$ ($1.0$ in math): $\\sum P(X) = 1$.\n\n"
+                "Distributions come in two flavors:\n"
+                "- **Discrete**: Counting distinct objects you can touch (scoops of ice cream, rolls of a die, coin flips).\n"
+                "- **Continuous**: Measuring smooth, unbroken things (your height growing over time, water pouring into a cup)."
             ),
             "challenge": (
-                f"**Now, let's test your understanding with a practical problem!**\n\n"
-                f"Suppose a sensor quality diagnostic classifies incoming signals into three categories with values $X = 1, 2,$ and $3$.\n"
-                f"Laboratory tests establish that:\n"
-                f"- $P(X = 1) = 0.20$\n"
-                f"- $P(X = 2) = 0.45$\n\n"
-                f"Using the fundamental axiom of total certainty ($\\sum P(X) = 1$), what must the probability $P(X = 3)$ equal?"
+                "**Now, let's test your intuition with a quick puzzle!**\n\n"
+                "Suppose we have a mystery box with only three types of toys: Toy A, Toy B, and Toy C.\n"
+                "Quality tests show that:\n"
+                "- Chance of getting Toy A: $P(\\text{Toy A}) = 0.20$ (20%)\n"
+                "- Chance of getting Toy B: $P(\\text{Toy B}) = 0.45$ (45%)\n\n"
+                "Since all the toys in the box must add up to 100% ($1.00$), what must the probability $P(\\text{Toy C})$ be?"
             ),
             "options": [
-                "P(X = 3) = 0.35",
+                "P(Toy C) = 0.35 (35%)",
                 "Show me how to solve this step-by-step",
                 "Explain the difference between discrete and continuous distributions"
             ]
@@ -154,23 +124,24 @@ def get_topic_groundup_explanation(target_name: str, domain: str = "mathematics"
         return {
             "heading": f"### 🎯 Core Conceptual Foundation: {target_name}",
             "explanation": (
-                f"In laboratory experiments, engineering tests, and data science, physical measurements are always subject to environmental noise, sensor tolerance, and human error. "
-                f"If you record $n$ data points $(x_1, y_1), (x_2, y_2), \\dots, (x_n, y_n)$, plotting them on a graph will virtually never produce a pristine mathematical line.\n\n"
-                f"**The Purpose of Curve Fitting**:\n"
-                f"The objective is **not** to force a jagged curve to pass through every single point (which simply memorizes and overfits the noise). "
-                f"Instead, the goal is to discover the underlying mathematical trend $y = f(x)$ that best represents the physical reality governing the system.\n\n"
-                f"**The Principle of Least Squares**:\n"
-                f"For any candidate curve $y = f(x)$, each data point $(x_i, y_i)$ has a vertical deviation called a **residual error**:\n"
-                f"$$\\quad e_i = y_i - f(x_i)$$\n\n"
-                f"If we simply summed the raw errors, positive deviations above the line would cancel out negative deviations below the line, giving an illusion of zero total error even for a completely wrong curve. "
-                f"To resolve this, the **Method of Least Squares** squares every individual deviation and minimizes the sum of squared errors:\n"
-                f"$$\\quad S = \\sum_{{i=1}}^n e_i^2 = \\sum_{{i=1}}^n \\big(y_i - f(x_i)\\big)^2$$\n\n"
-                f"By taking partial derivatives of $S$ with respect to the unknown curve parameters and setting them to zero, we obtain a system of linear equations called the **Normal Equations**."
+                "**Imagine you and your friends toss 5 colorful pebbles onto a sandy playground.**\n\n"
+                "Now, imagine trying to lay down a **single straight wooden yardstick** that comes as close as possible to all 5 pebbles at the exact same time!\n\n"
+                "Because your friends tossed the pebbles in slightly different spots, the stick cannot touch every single pebble at once. "
+                "Some pebbles sit slightly above the stick, and some sit slightly below it.\n\n"
+                f"**The Mission of {target_name}**:\n"
+                "Instead of drawing a crazy zig-zag line that bends to touch every speck of dust (which overfits noisy mistakes), "
+                "our goal is to find the **single best-balanced line or smooth curve** $y = f(x)$ that captures the true underlying physical direction.\n\n"
+                "**The Magic of Least Squares (Why do we square?)**:\n"
+                "For each pebble, the vertical gap between the pebble and your stick is the error $e_i$.\n"
+                "- If one pebble is 2 inches above ($+2$) and another is 2 inches below ($-2$), simply adding them gives $+2 + (-2) = 0$! "
+                "That would trick you into believing the stick fits perfectly, even though it missed both pebbles!\n"
+                "- By **squaring each error** ($(+2)^2 = 4$ and $(-2)^2 = 4$), all distances become positive. "
+                "We then balance the stick so the total sum of squared errors $S = \\sum e_i^2$ is as small as possible!"
             ),
             "challenge": (
-                f"**Now, let's test your understanding with a key concept question!**\n\n"
-                f"Why does the Principle of Least Squares minimize the sum of *squared* residuals $\\sum e_i^2$ rather than the sum of raw residuals $\\sum e_i$?\n"
-                f"What would happen to the estimated curve if positive and negative errors were allowed to cancel each other out?"
+                "**Now, let's test your intuition with a concept question!**\n\n"
+                "Why does the Principle of Least Squares minimize the sum of *squared* gaps $\\sum e_i^2$ rather than raw gaps $\\sum e_i$?\n"
+                "What would happen to the ruler if positive and negative errors canceled each other out to zero?"
             ),
             "options": [
                 "Positive and negative errors would cancel out to zero without squaring",
@@ -178,23 +149,57 @@ def get_topic_groundup_explanation(target_name: str, domain: str = "mathematics"
                 "Show me the normal equations for y = a + bx"
             ]
         }
+    elif any(k in name_low for k in ["root", "algebraic and transcendental", "algebraic", "transcendental", "bisection", "newton-raphson", "regula-falsi", "secant"]):
+        return {
+            "heading": "### 🎯 Core Conceptual Foundation: Roots of Equations",
+            "explanation": (
+                "**Imagine you are hiking along a continuous mountain trail.**\n\n"
+                "In the morning, you start in an underground cavern **below sea level** ($-10$ feet). "
+                "By midday, you have hiked up to a sunny lookout **above sea level** ($+50$ feet).\n\n"
+                "Because your trail is one unbroken physical path across the mountain, your boots **had to cross right at sea level (0 feet)** at least once along your journey! "
+                "In mathematics, that exact spot where your path hits elevation zero is called a **root** or a **zero**: $f(x) = 0$.\n\n"
+                "**The Two Equation Families**:\n"
+                "1. **Algebraic Equations**: Built from ordinary powers of $x$, like $x^3 - 4x + 1 = 0$.\n"
+                "2. **Transcendental Equations**: Contain curvy functions like waves ($\\sin x, \\cos x$), growth ($e^x$), or logs ($\\ln x$), like $x e^x - 1 = 0$.\n\n"
+                "**Why do we need Numerical Methods?**\n"
+                "For simple equations like $x^2 - 4 = 0$, you can solve them in your head. But for complex formulas and higher polynomials, there are no simple pencil-and-paper formulas! "
+                "So, smart numerical methods (like Bisection and Newton-Raphson) act like a magnifying glass, zooming in on the root step-by-step until we know its location to any decimal precision."
+            ),
+            "challenge": (
+                "**Now, let's put this into practice together!**\n\n"
+                "Consider the curve $f(x) = x^3 - x - 1 = 0$.\n"
+                "Let's check two points on our trail:\n"
+                "- At $x = 1$: $f(1) = 1^3 - 1 - 1 = -1$ (below sea level)\n"
+                "- At $x = 2$: $f(2) = 2^3 - 2 - 1 = +5$ (above sea level)\n\n"
+                "Now we test the halfway point $x = 1.5$:\n"
+                "$$f(1.5) = (1.5)^3 - 1.5 - 1 = 3.375 - 1.5 - 1 = +0.875$$\n\n"
+                "Since $f(1.5)$ is **positive** ($+0.875$), between which two points must the trail cross zero: **$[1, 1.5]$** or **$[1.5, 2]$**?"
+            ),
+            "options": [
+                "The root lies in [1, 1.5]",
+                "The root lies in [1.5, 2]",
+                "Let's walk through the interval bracket step-by-step"
+            ]
+        }
     elif any(k in name_low for k in ["numerical integration", "simpson", "trapezoidal", "quadrature"]):
         return {
             "heading": f"### 🎯 Core Conceptual Foundation: {target_name}",
             "explanation": (
-                f"In calculus, the definite integral $\\int_a^b f(x)dx$ represents the exact accumulated area under a continuous curve between $x = a$ and $x = b$.\n\n"
-                f"However, in real-world engineering, you frequently encounter two roadblocks:\n"
-                f"1. **No Closed-Form Antiderivative**: Functions like $f(x) = e^{{-x^2}}$ (the Gaussian bell curve) or $\\frac{{\\sin x}}{{x}}$ cannot be integrated using elementary analytical calculus.\n"
-                f"2. **Empirical Tabulated Data**: In many engineering applications, the formula $f(x)$ is completely unknown; you only possess discrete data sampled from physical instruments at fixed intervals.\n\n"
-                f"**The Numerical Strategy: Geometric Approximation**:\n"
-                f"Numerical integration resolves this by dividing the total interval $[a, b]$ into $n$ smaller subintervals of uniform width $h = \\frac{{b-a}}{{n}}$ and approximating each slice with a simple geometric shape:\n"
-                f"- **Trapezoidal Rule**: Connects consecutive points with straight line segments (linear interpolation), replacing curved slices with geometric trapezoids.\n"
-                f"- **Simpson's Rules**: Connects groups of points using parabolas (quadratic interpolation for Simpson's 1/3 Rule) or cubics (Simpson's 3/8 Rule), delivering far higher accuracy for smooth curves."
+                "**Imagine you have a giant slice of pizza with a curvy, wavy crust.**\n\n"
+                "You want to know exactly how much cheesy deliciousness is on your plate! "
+                "In calculus, finding the area under a curve is written as $\\int_a^b f(x)dx$. "
+                "However, when curves are bumpy or given only as raw sensor readings, standard textbook calculus formulas cannot find the antiderivative.\n\n"
+                "**What do you do? The French-Fry Slicing Trick!**\n"
+                "You take a pizza cutter and slice the curvy shape into **lots of thin vertical strips** of uniform width $h = \\frac{b-a}{n}$!\n\n"
+                "Each thin strip looks almost like a simple flat shape whose area is effortless to calculate:\n"
+                "- **Trapezoidal Rule**: Connects consecutive points with straight slanted roofs, turning curvy slices into simple trapezoids.\n"
+                "- **Simpson's Rules**: Connects consecutive points with smooth parabolic arches, capturing the gentle curves of the crust with astonishing accuracy!\n\n"
+                "By adding up the areas of all the simple strips, you get the area of the entire shape with high precision!"
             ),
             "challenge": (
-                f"**Now, let's test your intuition with a concept challenge!**\n\n"
-                f"Suppose you are integrating a function that is strictly concave upward (curving upward like $y = x^2$ or $y = e^x$).\n"
-                f"If you use the **Trapezoidal Rule** by connecting data points with straight chord segments, will the numerical result be an **overestimate** or an **underestimate** of the true area? Why?"
+                "**Now, let's test your intuition with a concept challenge!**\n\n"
+                "Suppose you are finding the area under a curve that bends upward like a soup bowl ($y = x^2$).\n"
+                "If you use the **Trapezoidal Rule** by connecting the data points with straight flat chords, will your calculated area be an **overestimate** or an **underestimate** of the true area? Why?"
             ),
             "options": [
                 "It will overestimate because the chords lie strictly above the curve",
@@ -206,20 +211,20 @@ def get_topic_groundup_explanation(target_name: str, domain: str = "mathematics"
         return {
             "heading": f"### 🎯 Core Conceptual Foundation: {target_name}",
             "explanation": (
-                f"In database systems and enterprise software architecture, databases must reliably handle millions of concurrent operations without data corruption or inconsistency.\n\n"
-                f"When database schemas are designed poorly without proper structure, they suffer from **Data Redundancy** (storing the same piece of information repeatedly across multiple rows). "
-                f"This redundancy leads to severe operational hazards known as anomalies:\n"
-                f"1. **Insertion Anomaly**: Inability to record certain information without also inserting unrelated data.\n"
-                f"2. **Deletion Anomaly**: Unintentionally losing vital related data when deleting a record.\n"
-                f"3. **Update Anomaly**: Having to modify data in dozens of places, where missing even one leads to contradictory data.\n\n"
-                f"**The Discipline of Normalization**:\n"
-                f"Normalization is the formal process of systematically organizing database tables using Functional Dependencies to minimize redundancy and eliminate update anomalies while preserving data lossless join integrity."
+                "**Imagine keeping all your clothes, shoes, tools, and groceries thrown into one giant bedroom drawer.**\n\n"
+                "Whenever you want a pair of socks, you have to dig through apples and wrenches! "
+                "Worse yet, if you throw away an old shoe, you accidentally throw away your car keys tucked beside it. "
+                "In database systems, cramming everything into one messy table causes the exact same chaos, called **Data Anomalies**.\n\n"
+                f"**The Discipline of {target_name}**:\n"
+                "Normalization is like buying a neat dresser with dedicated, labeled compartments: "
+                "one drawer for socks, one for shirts, and a separate pantry for food. "
+                "Each fact is stored in exactly **one place**, eliminating duplicates and preventing accidental data loss!"
             ),
             "challenge": (
-                f"**Let's test this concept with a real-world scenario!**\n\n"
-                f"Imagine a single university table storing `StudentID`, `StudentName`, `CourseID`, and `ProfessorOffice`.\n"
-                f"If the last student enrolled in Course CS101 drops the course, deleting that student's record also erases the information about where the professor's office is located.\n"
-                f"What type of database anomaly is this an example of?"
+                "**Let's test this concept with a real-world scenario!**\n\n"
+                "Imagine a university table where Student records and Professor office locations are stored together.\n"
+                "If the only student enrolled in a class drops out, deleting their row also erases the information about where the professor's office is located!\n"
+                "What type of anomaly is this an example of?"
             ),
             "options": [
                 "Deletion anomaly",
@@ -231,23 +236,139 @@ def get_topic_groundup_explanation(target_name: str, domain: str = "mathematics"
         return {
             "heading": f"### 🎯 Core Conceptual Foundation: {target_name}",
             "explanation": (
-                f"Mastering **{target_name}** begins with understanding the central challenge it was created to solve.\n\n"
-                f"In {domain}, complex systems and real-world processes rarely present themselves in simple, isolated forms. "
-                f"**{target_name}** provides a rigorous, structured methodology to break down complex phenomena into clear, predictable principles.\n\n"
-                f"**Core Principles & Mechanics**:\n"
-                f"1. **Fundamental Definition**: It establishes the formal boundaries, variables, and rules that govern how {target_name} operates.\n"
-                f"2. **Operational Framework**: It defines the step-by-step mechanisms, constraints, and relationships that allow you to analyze, calculate, and predict outcomes.\n"
-                f"3. **Real-World Impact**: Whether optimizing performance, managing uncertainty, or modeling physical dynamics, it turns abstract theory into practical, solvable solutions."
+                f"**Imagine you are building a LEGO castle with your friends.**\n\n"
+                f"Before you can build tall towers and drawbridges, you first need a solid, flat foundation plate on the ground.\n\n"
+                f"That foundation plate is **{target_name}**! "
+                f"In {domain}, complex challenges rarely present themselves in simple, isolated pieces. "
+                f"**{target_name}** gives us a reliable mental blueprint to break down complicated systems into small, manageable steps that behave predictably every single time."
             ),
             "challenge": (
-                f"**Now, let's test your understanding with an interactive challenge!**\n\n"
-                f"To solidify your foundational grasp of **{target_name}**, let's examine how its core rules apply in practice.\n"
-                f"Would you like to solve a targeted numerical or conceptual problem, or walk through a concrete case study together?"
+                f"**Now, let's explore this together!**\n\n"
+                f"To solidify your foundational grasp of **{target_name}**, would you like to walk through a concrete real-world scenario or solve a guided practice question together?"
             ),
             "options": [
+                "Walk through a concrete real-world scenario",
                 "Let's solve a targeted practice problem together",
-                "Walk through a concrete real-world case study",
                 "Explain the theoretical equations in more detail"
+            ]
+        }
+
+def get_topic_simplified_kid_explanation(target_name: str) -> Dict[str, Any]:
+    """
+    Returns an ultra-intuitive 5-year-old child explanation (zero jargon, zero textbook axioms)
+    when a student expresses confusion or requests simpler, more detailed explanations.
+    """
+    name_low = target_name.lower().strip()
+    if any(k in name_low for k in ["probability", "distribution", "random variable"]):
+        return {
+            "heading": "### 🧸 The 5-Year-Old Picture: The Candy Jar",
+            "explanation": (
+                "Imagine you have a big clear jar with **10 sweet jellybeans** inside: **6 red strawberries** and **4 blue raspberries**.\n\n"
+                "If you close your eyes, shake the jar, and reach in to pick one:\n"
+                "- How likely are you to get a red one? **6 chances out of 10**!\n"
+                "- How likely are you to get a blue one? **4 chances out of 10**!\n\n"
+                "That is the whole secret of **Probability**! A **Probability Distribution** is just the label on the jar that tells you:\n"
+                "1. Every single treat you could possibly pick out.\n"
+                "2. The exact chance of getting each treat!\n\n"
+                "**The Two Golden Rules (Pure Common Sense)**:\n"
+                "- **Rule 1 (No Negative Candies)**: You can never have $-2$ candies! So a chance is always between 0% (impossible) and 100% (guaranteed).\n"
+                "- **Rule 2 (The Whole Jar)**: If you add up the chances of all candies in the jar (60% + 40%), it ALWAYS equals 100% (or 1 in math)."
+            ),
+            "challenge": (
+                "**Here is a quick miniature puzzle for you:**\n\n"
+                "Imagine another jar has only **Green** and **Yellow** candies.\n"
+                "If the chance of grabbing a **Green** candy is **70%** ($0.70$), what must the chance of grabbing a **Yellow** candy be?"
+            ),
+            "options": [
+                "The chance is 30% (0.30)",
+                "Show me with another fun example",
+                "Now explain how this connects to math formulas"
+            ]
+        }
+    elif any(k in name_low for k in ["curve fit", "curve-fit", "least square", "regression"]):
+        return {
+            "heading": "### 🧸 The 5-Year-Old Picture: The Ruler and the Pebbles",
+            "explanation": (
+                "Imagine you and your friends throw **5 pebbles** onto the sandy playground.\n\n"
+                "Now, imagine you want to lay down **one straight wooden ruler** that passes as close as possible to all 5 pebbles at the same time!\n\n"
+                "Because your friends threw the pebbles in slightly different spots, the ruler cannot touch every single pebble. Some pebbles are a little bit above the ruler, and some are a little bit below it.\n\n"
+                "**What is Curve Fitting?**\n"
+                "Curve fitting is simply finding the **best position for that ruler** so that the overall distances from the pebbles to the ruler are as tiny as possible!\n\n"
+                "**Why 'Least Squares'?**\n"
+                "If one pebble is 2 inches above (+2) and another is 2 inches below (-2), just adding them gives $+2 + (-2) = 0$. That would trick you into thinking the ruler is touching them both! "
+                "So we square the distances ($2 \\times 2 = 4$). Now all numbers are positive, and we balance the ruler to make the total score as small as possible."
+            ),
+            "challenge": (
+                "**Here is a quick question:**\n\n"
+                "If you had to pick between:\n"
+                "A) A ruler that misses pebbles by 1 inch total\n"
+                "B) A ruler that misses pebbles by 10 inches total\n\n"
+                "Which ruler fits the pebbles better?"
+            ),
+            "options": [
+                "Ruler A fits much better because the error is smaller",
+                "Show me with a simple diagram",
+                "How do we write this with an equation?"
+            ]
+        }
+    elif any(k in name_low for k in ["root", "algebraic", "transcendental", "bisection", "newton"]):
+        return {
+            "heading": "### 🧸 The 5-Year-Old Picture: Crossing the River",
+            "explanation": (
+                "Imagine you are hiking along a trail through a forest. At the start of the trail, you are down in a deep ditch **below ground level** (-5 feet). "
+                "Later on, you climb up onto a sunny hill **above ground level** (+5 feet).\n\n"
+                "Because your trail is one continuous walking path without jumping through the air, your feet **had to step right at ground level (0 feet)** at least once!\n\n"
+                "**What is a Root?**\n"
+                "In math, finding a **root** just means finding the exact spot along the path where your elevation is **zero**: $f(x) = 0$!\n\n"
+                "If you know you were below ground at Step 1 and above ground at Step 2, you know for sure the treasure (elevation 0) is buried right between Step 1 and Step 2!"
+            ),
+            "challenge": (
+                "**Quick check:**\n\n"
+                "If you check Step 1 and you are at $-2$, and at Step 2 you are at $+3$, did you cross ground level zero between Step 1 and Step 2?"
+            ),
+            "options": [
+                "Yes, because the path crossed from negative to positive",
+                "Show me how to zoom in on the exact spot",
+                "Explain how computers find this spot"
+            ]
+        }
+    elif any(k in name_low for k in ["numerical integration", "simpson", "trapezoidal", "quadrature"]):
+        return {
+            "heading": "### 🧸 The 5-Year-Old Picture: Slicing the Pizza",
+            "explanation": (
+                "Imagine you have a giant slice of pizza with a bumpy, wavy curved crust.\n\n"
+                "You want to know exactly how much cheesy deliciousness is on the plate, but because the crust is wavy and bumpy, you don't have a formula to measure it all at once.\n\n"
+                "**What do you do?**\n"
+                "You take a pizza cutter and slice it into **lots of thin vertical french-fry slices**!\n\n"
+                "Each thin slice looks almost like a simple little rectangle or trapezoid with a flat top. "
+                "It is super easy to calculate the area of each little slice! Then you just add all the little slices together to get the total pizza area.\n\n"
+                "That is all **Numerical Integration** is: slicing a curvy shape into easy straight pieces and adding them up!"
+            ),
+            "challenge": (
+                "**Quick question:**\n\n"
+                "If you slice the pizza into 100 thin slices instead of 2 fat slices, do you get a more accurate measurement of the pizza?"
+            ),
+            "options": [
+                "Yes, more thin slices give a much more accurate answer",
+                "Explain the difference between straight and curved slices",
+                "Let's see the formula for this"
+            ]
+        }
+    else:
+        return {
+            "heading": f"### 🧸 The 5-Year-Old Picture: {target_name}",
+            "explanation": (
+                f"Imagine you are building a LEGO tower with your friends. Before adding hundreds of tiny blocks, you first need a solid, flat base plate on the carpet.\n\n"
+                f"That flat base plate is **{target_name}**! Instead of confusing formulas, think of it as a simple everyday tool that solves one clear problem: "
+                f"it takes something messy or complicated, breaks it down into small bite-sized steps, and gives you a reliable, predictable result every single time."
+            ),
+            "challenge": (
+                f"Would you like to see a real-world story of how **{target_name}** is used in everyday life?"
+            ),
+            "options": [
+                "Yes, show me a fun everyday story",
+                "Let's see a simple step-by-step example",
+                "Show me the basic formula"
             ]
         }
 
@@ -647,9 +768,19 @@ class TeachingPlanner:
                         "before we dive in", "socratic layer 1", "socratic layer 2", "socratic layer 3",
                         "based on this clue", "based on this first hint", "now, what do you think",
                         "considering this second clue", "how do you think",
-                        "what do you think now", "conceptual question", "conceptual check"
+                        "what do you think now", "conceptual question", "conceptual check",
+                        "core conceptual foundation", "starting perspective", "test your intuition",
+                        "test your understanding", "5-year-old picture", "quick options"
                     ]):
                         socratic_turns += 1
+
+        is_confused = any(c in query.lower() for c in [
+            "did not understand", "didn't understand", "dont understand", "don't understand",
+            "not understand", "confused", "simpler", "more simple", "simple words",
+            "explain to a kid", "explain like", "more detailed answer", "too complex",
+            "not getting it", "didnt get it", "didn't get it", "could not understand", "couldn't understand",
+            "noo i did not", "no i did not", "hard to understand"
+        ])
 
         if is_skip:
             teaching_stage = "CURRICULUM_STEP_1_BASICS"
@@ -659,6 +790,14 @@ class TeachingPlanner:
                 f"3. Multimodal Table, Mermaid Flowchart/Diagram, and Practical Python Code Snippet",
                 f"4. Next Topic Options: Present next topics for selection"
             ]
+        elif is_confused:
+            teaching_stage = "SIMPLIFIED_ANALOGY_BREAKDOWN"
+            concepts_to_cover = [
+                f"1. Warm Empathy & Reset: Apologize warmly for using textbook jargon or moving too quickly.",
+                f"2. Ultra-Simple 5-Year-Old Explanation for {target_name}: Explain using a vivid, everyday child-friendly physical analogy (candy jar, balance ruler, hiking trail, pizza slices). Strictly zero abstract symbols, axioms, or integrals.",
+                f"3. Relatable Intuitive Puzzle / Question to test the kid mental model.",
+                f"4. Quick Options: - [I get it now! Show me a practical example], - [Explain with another simple analogy], - [Ready to solve a problem]"
+            ]
         elif socratic_turns == 0:
             teaching_stage = "SOCRATIC_LAYER_1_PROBE"
             greeting_phrase = f"Hello {student_name}!" if student_name else "Hello!"
@@ -667,7 +806,7 @@ class TeachingPlanner:
                 f"1. Greeting & Captivating Topic Hook: Greet with '{greeting_phrase}' and immediately present an engaging, inspiring 1-2 sentence hook tailored to {target_name} (e.g. '{opening_hook}'). DO NOT use canned formulas like '{target_name} is the topic' or '{target_name} is very fundamental'.",
                 f"2. Prior Knowledge Check: Ask cleanly without repetition: 'Before we dive in, I\\'d love to know: how familiar are you with **{target_name}**?'",
                 f"3. STRICT RULES: DO NOT dump definitions or mechanical explanations here. DO NOT include any '(Note: ...)' tips, warnings, or formulas. ZERO hints in this turn.",
-                f"4. Quick Options: - [I am completely new to this topic, guide me step-by-step from zero], - [I have a rough idea, test my understanding], - [Skip hints & explain directly from basics to advanced]"
+                f"4. Quick Options: - [I am completely new to this topic, guide me step-by-step from zero], - [I have a rough idea, test my understanding], - [Skip conversation and start explaining]"
             ]
         elif socratic_turns == 1:
             teaching_stage = "SOCRATIC_LAYER_2_HINT_1"
