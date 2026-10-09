@@ -19,7 +19,7 @@ class GeminiProvider(LLMProvider):
         raw_keys = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
         self.api_keys = [k.strip() for k in raw_keys.split(",") if k.strip() and not k.strip().startswith("your_")]
         self._active_key_index = 0
-        self._model_name = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+        self._model_name = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
 
     @property
     def api_key(self) -> str:
@@ -103,13 +103,16 @@ class GeminiProvider(LLMProvider):
             }
         }
 
-        # Build fallback model list with verified active models
+        # Verified working models in order of speed and stability
+        verified_fallbacks = ["gemini-flash-lite-latest", "gemini-2.5-flash"]
         candidate_models = [self._model_name]
-        for fallback in ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash", "gemma-4-26b-a4b-it", "gemini-flash-latest"]:
+        for fallback in verified_fallbacks:
             if fallback not in candidate_models:
                 candidate_models.append(fallback)
 
         last_error = ""
+
+        import httpx
 
         # Attempt calls across available API keys and candidate models
         for model in candidate_models:
@@ -118,49 +121,44 @@ class GeminiProvider(LLMProvider):
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={current_key}"
                 
                 try:
-                    req = urllib.request.Request(
-                        url,
-                        data=json.dumps(payload).encode("utf-8"),
-                        headers={"Content-Type": "application/json"}
-                    )
-                    with urllib.request.urlopen(req, timeout=30) as response:
-                        res_body = json.loads(response.read().decode("utf-8"))
-
-                    latency = (time.time() - start_time) * 1000
+                    with httpx.Client(timeout=60.0) as client:
+                        response = client.post(url, json=payload)
                     
-                    candidates = res_body.get("candidates", [])
-                    if candidates and "content" in candidates[0]:
-                        parts_res = candidates[0]["content"].get("parts", [])
-                        text_res = "".join([p.get("text", "") for p in parts_res])
-                        
-                        usage_metadata = res_body.get("usageMetadata", {})
-                        tokens_used = usage_metadata.get("totalTokenCount", None)
+                    if response.status_code == 200:
+                        res_body = response.json()
+                        latency = (time.time() - start_time) * 1000
+                        candidates = res_body.get("candidates", [])
+                        if candidates and "content" in candidates[0]:
+                            parts_res = candidates[0]["content"].get("parts", [])
+                            text_res = "".join([p.get("text", "") for p in parts_res])
+                            usage_metadata = res_body.get("usageMetadata", {})
+                            tokens_used = usage_metadata.get("totalTokenCount", None)
 
-                        return ProviderResponse(
-                            content=text_res,
-                            provider_name=self.name,
-                            model_name=model,
-                            is_success=True,
-                            tokens_used=tokens_used,
-                            latency_ms=latency
-                        )
-                except urllib.error.HTTPError as e:
-                    err_body = e.read().decode("utf-8") if e.fp else str(e)
-                    last_error = f"HTTP {e.code} ({model}): {err_body[:200]}"
-                    if e.code in (429, 503):
-                        logger.warning(f"Gemini {e.code} limit on model '{model}'. Rotating key/model...")
+                            return ProviderResponse(
+                                content=text_res,
+                                provider_name=self.name,
+                                model_name=model,
+                                is_success=True,
+                                tokens_used=tokens_used,
+                                latency_ms=latency
+                            )
+                    elif response.status_code in (429, 503):
+                        logger.warning(f"Gemini {response.status_code} limit on model '{model}'. Rotating key/model...")
                         if len(self.api_keys) > 1 and key_attempt < len(self.api_keys) - 1:
                             self.rotate_key()
-                            time.sleep(0.5)
                             continue
                         else:
-                            # Quota exhausted for this key; don't waste time retrying same exhausted key across models
                             break
-                    elif e.code == 404:
+                    elif response.status_code == 404:
                         logger.warning(f"Gemini model '{model}' not found (404). Trying next candidate...")
                         break
                     else:
+                        last_error = f"HTTP {response.status_code}: {response.text[:200]}"
                         break
+                except httpx.TimeoutException:
+                    last_error = f"Timeout on {model}"
+                    logger.warning(f"Gemini provider timeout on '{model}'. Trying next candidate...")
+                    break
                 except Exception as e:
                     last_error = str(e)
                     logger.warning(f"Gemini provider exception on '{model}': {e}")

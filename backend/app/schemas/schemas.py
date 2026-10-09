@@ -44,6 +44,7 @@ class ConversationCreate(BaseModel):
     topic_name: Optional[str] = None
     initial_question: Optional[str] = None
     document_ids: Optional[List[str]] = []
+    student_name: Optional[str] = None
 
 class ConversationResponse(BaseModel):
     id: str
@@ -121,6 +122,7 @@ class TopicResponse(BaseModel):
 # --- Chat & RAG Schemas ---
 class ChatRequest(BaseModel):
     user_id: Optional[str] = "demo_student"
+    student_name: Optional[str] = None
     conversation_id: Optional[str] = None
     question: str = Field(..., example="What is an AVL Tree rotation?")
     tone: Optional[str] = "Intuitive Analogy"
@@ -147,19 +149,25 @@ class QuestionGenRequest(BaseModel):
     topic_id: Optional[str] = None
     topic_name: Optional[str] = None
     conversation_id: Optional[str] = None
-    difficulty: str = Field("Medium", example="Medium") # Easy, Medium, Hard
-    question_count: int = Field(5, ge=1, le=20)
+    difficulty: str = Field("Medium", example="Medium") # Easy, Medium, Hard, Adaptive
+    question_count: int = Field(5, ge=1, le=50)
     question_type: str = Field("MCQ", example="MCQ") # MCQ, Short Answer, Numerical
+    total_marks: Optional[int] = Field(10, example=10) # 10, 20, 30, 40, 50
+    user_id: Optional[str] = "demo_student"
 
 class QuestionResponse(BaseModel):
     id: str
+    assessment_id: Optional[str] = None
     topic_id: Optional[str]
+    topic_name: Optional[str] = None
     question_text: str
     question_type: str
     options: Optional[List[str]] = None
-    explanation: str
+    explanation: Optional[str] = None
     difficulty: str
-    source_metadata: Dict[str, Any]
+    marks: Optional[float] = 2.0
+    total_marks: Optional[int] = 10
+    source_metadata: Dict[str, Any] = {}
     source_chunk_ids: Optional[List[str]] = None
 
     class Config:
@@ -180,12 +188,14 @@ class QuizGradedAnswer(BaseModel):
     correct_answer: str
     is_correct: bool
     score: float
+    max_marks: Optional[float] = 1.0
     explanation: str
     source_metadata: Dict[str, Any]
 
 class QuizSubmitResponse(BaseModel):
     attempt_id: str
     total_score: float
+    total_marks: Optional[float] = None
     percentage: float
     graded_answers: List[QuizGradedAnswer]
     updated_mastery: float
@@ -216,3 +226,23 @@ class EvalRunResponse(BaseModel):
     context_precision_score: float
     context_recall_score: float
     details: List[Dict[str, Any]]
+
+# --- Socratic Hint Ladder Schemas ---
+class HintLadderRequest(BaseModel):
+    conversation_id: str
+    problem_text: str
+    hint_level: int = Field(1, ge=1, le=4)
+    student_attempt: Optional[str] = None
+    user_id: Optional[str] = "demo_student"
+
+class HintLadderResponse(BaseModel):
+    conversation_id: str
+    problem_text: str
+    hint_level: int
+    title: str
+    content: str
+    guiding_question: Optional[str] = None
+    next_allowed_level: int
+    can_reveal_solution: bool
+    attempt_feedback: Optional[str] = None
+    citations: List[CitationSchema] = []

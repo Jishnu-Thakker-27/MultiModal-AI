@@ -105,9 +105,9 @@ def process_document(document_id: str, db: Session = Depends(get_db)):
         repo.add_chunks(chunks)
         repo.update_document_status(document_id, "Completed")
 
-        # Build explicit educational concept graph (nodes, relationships, document sequence)
-        from app.knowledge.concept_extractor import extract_and_build_concept_graph
-        extract_and_build_concept_graph(
+        # Build explicit educational concept graph & structured section-wise curriculum
+        from app.knowledge.concept_extractor import extract_and_build_concept_graph, build_curriculum_progression
+        created_nodes = extract_and_build_concept_graph(
             db=db,
             course_id=doc.course_id,
             document_id=doc.id,
@@ -115,30 +115,28 @@ def process_document(document_id: str, db: Session = Depends(get_db)):
             source_type=doc.source_type
         )
 
-        # Dynamically infer topic structure from document text & title
-        doc_base = os.path.splitext(doc.title)[0].replace("_", " ").replace("-", " ")
-        topic_name = doc_base.title()
-        
-        # Build dynamic topic tree derived from content
+        curriculum = build_curriculum_progression(created_nodes, doc.title)
+
+        # Build dynamic section-wise and topic-wise curriculum progression tree
         topic_tree = [
             {
-                "name": topic_name,
-                "description": f"Extracted core topics and principles from {doc.title}",
+                "name": curriculum["main_topic"],
+                "description": f"Curriculum progression for {doc.title}",
                 "subtopics": [
                     {
-                        "name": f"{topic_name} Fundamentals",
-                        "concepts": ["Core Definition", "Properties & Invariants"]
-                    },
-                    {
-                        "name": f"{topic_name} Operations",
-                        "concepts": ["Algorithm Ingestion", "Efficiency & Complexity"]
-                    }
+                        "name": f"Stage {s['stage_number']}: {s['level']}",
+                        "concepts": s["topics"]
+                    } for s in curriculum["stages"]
                 ]
             }
         ]
         repo.save_topic_structure(doc.course_id, topic_tree)
 
-        return {"status": "success", "chunks_created": len(chunks)}
+        return {
+            "status": "success",
+            "chunks_created": len(chunks),
+            "curriculum": curriculum
+        }
     except Exception as e:
         repo.update_document_status(document_id, "Failed", str(e))
         raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
@@ -148,22 +146,35 @@ from fastapi.responses import FileResponse
 @router.get("/documents/{document_id}/file")
 @router.get("/documents/{document_id}/view")
 def get_document_file(document_id: str, db: Session = Depends(get_db)):
-    doc = db.query(DocModel).filter(DocModel.id == document_id).first()
+    # Lookup by document ID or exact document title
+    doc = db.query(DocModel).filter(
+        (DocModel.id == document_id) | (DocModel.title == document_id)
+    ).first()
+
+    if not doc:
+        # Fallback to case-insensitive title match if document_id is filename
+        doc = db.query(DocModel).filter(DocModel.title.ilike(f"%{document_id}%")).first()
+
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
     file_path = doc.file_path
     if not file_path or not os.path.exists(file_path):
-        candidate1 = os.path.join(settings.UPLOAD_DIR, doc.course_id or "default_course", doc.title)
-        candidate2 = os.path.join(settings.UPLOAD_DIR, "default_course", doc.title)
-        candidate3 = os.path.join(settings.UPLOAD_DIR, os.path.basename(doc.file_path or doc.title))
-        if os.path.exists(candidate1):
-            file_path = candidate1
-        elif os.path.exists(candidate2):
-            file_path = candidate2
-        elif os.path.exists(candidate3):
-            file_path = candidate3
-        else:
+        candidates = [
+            os.path.join(settings.UPLOAD_DIR, doc.course_id or "default_course", doc.title),
+            os.path.join(settings.UPLOAD_DIR, "default_course", doc.title),
+            os.path.join(settings.UPLOAD_DIR, os.path.basename(doc.file_path or doc.title)),
+            os.path.join(os.path.dirname(settings.UPLOAD_DIR), "uploads", "default_course", doc.title),
+            os.path.join(os.getcwd(), "backend", "uploads", "default_course", doc.title),
+            os.path.join(os.getcwd(), "uploads", "default_course", doc.title),
+        ]
+        found = False
+        for cand in candidates:
+            if os.path.exists(cand):
+                file_path = os.path.abspath(cand)
+                found = True
+                break
+        if not found:
             raise HTTPException(status_code=404, detail=f"Document file not found on disk: {doc.title}")
 
     media_type = "application/pdf"
@@ -177,7 +188,10 @@ def get_document_file(document_id: str, db: Session = Depends(get_db)):
         file_path,
         media_type=media_type,
         headers={
-            "Content-Disposition": f'inline; filename="{os.path.basename(file_path)}"'
+            "Content-Disposition": f'inline; filename="{os.path.basename(file_path)}"',
+            "Content-Type": media_type,
+            "Access-Control-Allow-Origin": "*",
+            "X-Frame-Options": "SAMEORIGIN"
         }
     )
 

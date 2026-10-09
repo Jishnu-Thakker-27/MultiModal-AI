@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import MarkdownRenderer from '../components/common/MarkdownRenderer';
+import SocraticHintLadderModal from '../components/common/SocraticHintLadderModal';
 import {
   postConversationChat,
   createConversation,
@@ -11,6 +12,10 @@ import {
 } from '../services/api';
 
 interface TutorWorkspaceProps {
+  initialTopic?: string;
+  initialPrompt?: string;
+  initialUploadCategory?: 'pdf' | 'ppt' | 'video' | 'audio';
+  autoOpenUpload?: boolean;
   onNavigateToQuiz?: () => void;
   onNavigateToSources?: () => void;
 }
@@ -43,11 +48,93 @@ interface ConversationItem {
 
 type UploadSourceType = 'video' | 'ppt' | 'pdf' | 'audio';
 
+function extractFollowUpOptions(text: string): string[] {
+  if (!text || typeof text !== 'string') return [];
+
+  const options: string[] = [];
+
+  // Match roadmap or quick options section
+  const roadmapMatch = text.match(/(?:###?\s*🗺️?\s*(?:Next Learning Steps|Topic Options|Quick Options|Further Topics|Topics to Explore)[\s\S]*?$)/i);
+  const targetSection = roadmapMatch ? roadmapMatch[0] : text;
+
+  // 1. Match bracketed options like "- [Option text]" or "* [Option text]"
+  const bracketMatches = targetSection.matchAll(/^[*-]\s*\[(.*?)\]/gm);
+  for (const m of bracketMatches) {
+    const val = m[1].trim();
+    if (val && !options.includes(val) && val.length < 80) {
+      options.push(val);
+    }
+  }
+
+  // 2. If no bracket matches, match bullet items under roadmap section
+  if (options.length === 0 && roadmapMatch) {
+    const lines = roadmapMatch[0].split('\n');
+    for (const line of lines) {
+      const bulletMatch = line.match(/^[*-]\s+(?:\*\*)?([A-Za-z0-9\s—–:,\.()]{4,70})(?:\*\*)?$/);
+      if (bulletMatch) {
+        const val = bulletMatch[1].trim();
+        if (
+          val &&
+          !val.toLowerCase().startsWith('what would you') &&
+          !val.toLowerCase().startsWith('click an option') &&
+          !options.includes(val)
+        ) {
+          options.push(val);
+        }
+      }
+    }
+  }
+
+  // 3. Numbered lists under roadmap section
+  if (options.length === 0 && roadmapMatch) {
+    const lines = roadmapMatch[0].split('\n');
+    for (const line of lines) {
+      const numMatch = line.match(/^\d+\.\s+(?:\*\*)?([A-Za-z0-9\s—–:,\.()]{4,70})(?:\*\*)?$/);
+      if (numMatch) {
+        const val = numMatch[1].trim();
+        if (val && !options.includes(val)) {
+          options.push(val);
+        }
+      }
+    }
+  }
+
+  if (options.length > 0) {
+    return options.slice(0, 5);
+  }
+
+  return [
+    'I am completely new to this topic, guide me step-by-step',
+    'I have a rough idea, test my understanding',
+    'Skip hints & explain directly from basics to advanced',
+  ];
+}
+
+function stripFollowUpOptionsFromText(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text;
+
+  // 1. Remove markdown roadmap / quick options header and everything following it
+  cleaned = cleaned.replace(/(?:###?\s*🗺️?\s*(?:Next Learning Steps|Topic Options|Quick Options|Further Topics|Topics to Explore)[\s\S]*?$)/i, '');
+
+  // 2. Remove any remaining prompt text like "What would you like to explore next? Click an option below or ask any doubt:"
+  cleaned = cleaned.replace(/(?:What would you like to explore next\??\s*(?:Click an option below|ask any doubt)?[:\s]*)/i, '');
+
+  // 3. Remove any standalone bracketed options "- [Option text]" or "* [Option text]"
+  cleaned = cleaned.replace(/^[*-]\s*\[.*?\]\s*$/gm, '');
+
+  return cleaned.trim();
+}
+
 export const TutorPage: React.FC<TutorWorkspaceProps> = ({
+  initialTopic,
+  initialPrompt,
+  initialUploadCategory,
+  autoOpenUpload,
   onNavigateToQuiz,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState(initialPrompt || '');
   const [isRecordingMic, setIsRecordingMic] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -55,13 +142,13 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
   const [conversationsList, setConversationsList] = useState<ConversationItem[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [activeTitle, setActiveTitle] = useState('New Study Session');
-  const [activeTopic, setActiveTopic] = useState('General');
+  const [activeTopic, setActiveTopic] = useState(initialTopic || 'General');
   const [activeSources, setActiveSources] = useState<SourceItem[]>([]);
   const [isLoadingApi, setIsLoadingApi] = useState(false);
 
   // Unified Upload Modal State
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadCategory, setUploadCategory] = useState<UploadSourceType>('pdf');
+  const [showUploadModal, setShowUploadModal] = useState(autoOpenUpload || false);
+  const [uploadCategory, setUploadCategory] = useState<UploadSourceType>(initialUploadCategory || 'pdf');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [urlTitle, setUrlTitle] = useState('');
@@ -76,6 +163,12 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
     documentTitle: string;
     page: number;
   } | null>(null);
+
+  // Socratic Hint Ladder Modal State
+  const [hintLadderState, setHintLadderState] = useState<{
+    isOpen: boolean;
+    problemText: string;
+  }>({ isOpen: false, problemText: '' });
 
   const openDocumentViewer = (documentId?: string, page: number = 1, documentTitle: string = 'Course Material') => {
     let resolvedId = documentId;
@@ -104,6 +197,18 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
     loadConversations();
   }, []);
 
+  useEffect(() => {
+    if (autoOpenUpload) {
+      setShowUploadModal(true);
+      if (initialUploadCategory) {
+        setUploadCategory(initialUploadCategory);
+      }
+    }
+    if (initialTopic) {
+      setActiveTopic(initialTopic);
+    }
+  }, [autoOpenUpload, initialUploadCategory, initialTopic]);
+
   const loadConversations = async () => {
     try {
       const convs = await getConversations();
@@ -123,8 +228,13 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
     try {
       const details = await getConversationDetails(convId);
       if (details) {
-        setActiveTitle(details.title || 'Study Session');
-        setActiveTopic(details.topic_name || 'Course Material');
+        const derivedDocTopic = details.sources?.[0]?.title
+          ? details.sources[0].title.replace(/\.(pdf|pptx|ppt|mp4|mov|webm)$/i, '').replace(/^(?:chapter|lecture|unit)\s*\d+[\s\-_–:]*/i, '').trim()
+          : '';
+        const cleanTopic = details.topic_name && details.topic_name.toLowerCase() !== 'general'
+          ? details.topic_name
+          : (derivedDocTopic || '');
+        setActiveTopic(cleanTopic);
         setActiveSources(details.sources || []);
 
         if (details.messages && Array.isArray(details.messages)) {
@@ -136,6 +246,7 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
               : 'Recently',
             text: m.content || '',
             citations: m.citations || [],
+            followUps: m.role !== 'user' ? extractFollowUpOptions(m.content || '') : undefined,
           }));
           setMessages(mapped);
         } else {
@@ -182,12 +293,12 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
       const newConv = await createConversation({
         title: 'New Study Session',
         course_id: 'default_course',
-        topic_name: 'General',
+        topic_name: null,
       });
       if (newConv && newConv.id) {
         setActiveConvId(newConv.id);
         setActiveTitle(newConv.title || 'New Study Session');
-        setActiveTopic(newConv.topic_name || 'General');
+        setActiveTopic(newConv.topic_name && newConv.topic_name.toLowerCase() !== 'general' ? newConv.topic_name : '');
         setActiveSources([]);
         setMessages([]);
         loadConversations();
@@ -195,7 +306,7 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
     } catch {
       setActiveConvId(null);
       setActiveTitle('New Study Session');
-      setActiveTopic('General');
+      setActiveTopic('');
       setActiveSources([]);
       setMessages([]);
     }
@@ -263,7 +374,7 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
         }
       }
 
-      setUploadSuccess(`Successfully uploaded "${fileToUpload.name}"!`);
+      setUploadSuccess(`Uploaded "${fileToUpload.name}".`);
       setSelectedFile(null);
       setUrlInput('');
       setUrlTitle('');
@@ -273,6 +384,13 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
       const details = await getConversationDetails(convId);
       if (details) {
         if (details.title) setActiveTitle(details.title);
+        const derivedDocTopic = details.sources?.[0]?.title
+          ? details.sources[0].title.replace(/\.(pdf|pptx|ppt|mp4|mov|webm)$/i, '').replace(/^(?:chapter|lecture|unit)\s*\d+[\s\-_–:]*/i, '').trim()
+          : '';
+        const cleanTopic = details.topic_name && details.topic_name.toLowerCase() !== 'general'
+          ? details.topic_name
+          : (derivedDocTopic || '');
+        if (cleanTopic) setActiveTopic(cleanTopic);
         if (details.sources) setActiveSources(details.sources);
       }
       loadConversations();
@@ -280,7 +398,34 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
       setTimeout(() => {
         setShowUploadModal(false);
         setUploadSuccess(null);
-      }, 1200);
+      }, 1000);
+
+      // Automatically trigger initial greeting and diagnostic probe for the uploaded topic if session is new
+      if (convId && messages.length === 0) {
+        setIsLoadingApi(true);
+        postConversationChat(convId, 'Explain topic', 'Basics to Advanced')
+          .then((res: any) => {
+            const lastMessage = res?.messages?.slice(-1)[0];
+            const answerText = res?.answer || res?.content || lastMessage?.content || (typeof res === 'string' ? res : '');
+            if (answerText) {
+              const guideMsg: ChatMessage = {
+                id: `msg-guide-${Date.now()}`,
+                sender: 'socratic-guide',
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                text: answerText,
+                citations: res?.citations || [],
+                followUps: extractFollowUpOptions(answerText),
+              };
+              setMessages([guideMsg]);
+            }
+          })
+          .catch((autoErr) => {
+            console.error('Failed to trigger initial topic greeting:', autoErr);
+          })
+          .finally(() => {
+            setIsLoadingApi(false);
+          });
+      }
     } catch (err: any) {
       setUploadError(err?.response?.data?.detail || err?.message || 'Failed to upload document.');
     } finally {
@@ -288,12 +433,19 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
     }
   };
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!inputText.trim()) return;
+  const handleSendMessage = async (textOrEvent?: string | React.FormEvent) => {
+    let userText = '';
+    if (typeof textOrEvent === 'string') {
+      userText = textOrEvent.trim();
+    } else {
+      if (textOrEvent && 'preventDefault' in textOrEvent) {
+        textOrEvent.preventDefault();
+      }
+      userText = inputText.trim();
+      setInputText('');
+    }
 
-    const userText = inputText;
-    setInputText('');
+    if (!userText || isLoadingApi) return;
 
     const newMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -329,11 +481,7 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           text: answerText,
           citations: res?.citations || [],
-          followUps: [
-            'Test my understanding with a question',
-            'Provide an intuitive visual metaphor',
-            'Derive the mathematical formulation',
-          ],
+          followUps: extractFollowUpOptions(answerText),
         };
         setMessages((prev) => [...prev, guideMsg]);
       } else {
@@ -369,30 +517,30 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
   );
 
   return (
-    <div className="w-full">
+    <div className="w-full h-full flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* Main 2-Column Static Workspace Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start h-[calc(100vh-8.5rem)] min-h-[620px]">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 items-stretch h-full w-full flex-1 min-h-0 overflow-hidden">
 
         {/* LEFT COLUMN: Fixed Sidebar */}
-        <div className="lg:col-span-4 flex flex-col gap-4 h-full overflow-y-auto pr-1">
+        <div className="lg:col-span-4 xl:col-span-3 flex flex-col gap-3.5 h-full overflow-hidden min-h-0">
 
           {/* New Study Session Button */}
           <button
             onClick={handleCreateNewInquiry}
-            className="w-full py-3.5 px-5 rounded-2xl bg-[#f3cfba] hover:bg-[#fadfd0] text-[#725746] font-bold text-[14px] shadow-sm flex items-center justify-between transition-all cursor-pointer shrink-0"
+            className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-[#f3cfba] to-[#eec0a5] hover:from-[#fae3d5] hover:to-[#f5cca8] text-[#5e4334] font-extrabold text-[15px] shadow-sm hover:shadow-md flex items-center justify-between transition-all cursor-pointer shrink-0 border border-[#e5beaa]"
           >
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[20px]">add</span>
+            <div className="flex items-center gap-2.5">
+              <span className="material-symbols-outlined text-[22px]">add_circle</span>
               <span>New Study Session</span>
             </div>
-            <span className="text-[11px] font-semibold text-[#725746] bg-white/60 px-2 py-0.5 rounded-md">
+            <span className="text-[12px] font-bold text-[#5e4334] bg-white/70 px-2.5 py-1 rounded-lg shadow-2xs">
               Start
             </span>
           </button>
 
           {/* Search Input Box */}
           <div className="relative flex items-center shrink-0">
-            <span className="material-symbols-outlined absolute left-3.5 text-[#81756e] text-[18px]">
+            <span className="material-symbols-outlined absolute left-4 text-[#81756e] text-[20px]">
               search
             </span>
             <input
@@ -400,23 +548,23 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
               placeholder="Search chapters, sources..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white border border-[#ede7df] text-[13px] text-[#1d1b17] placeholder:text-[#81756e] shadow-xs focus:outline-none focus:ring-2 focus:ring-[#745948]/30"
+              className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white border border-[#ede7df] text-[14px] text-[#1d1b17] placeholder:text-[#998b81] shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#745948]/20 focus:border-[#745948] transition-all"
             />
           </div>
 
           {/* Active Context Sources Container */}
-          <div className="p-4 rounded-3xl bg-white shadow-sm border border-[#ede7df] flex flex-col gap-3 shrink-0">
+          <div className="p-4 sm:p-5 rounded-3xl bg-white shadow-sm border border-[#ede7df] flex flex-col gap-3 shrink-0">
             <div className="flex items-center justify-between">
-              <span className="text-[12px] font-bold uppercase tracking-wider text-[#4f453f] flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#745948]"></span>
+              <span className="text-[13px] font-black uppercase tracking-wider text-[#745948] flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#745948]"></span>
                 Attached Course Sources
               </span>
-              <span className="px-2 py-0.5 rounded-full bg-[#f9f3eb] text-[11px] font-bold text-[#745948]">
+              <span className="px-2.5 py-0.5 rounded-full bg-[#f9f3eb] text-[12px] font-extrabold text-[#745948] border border-[#ede7df]">
                 {activeSources.length} Attached
               </span>
             </div>
 
-            <div className="flex flex-col gap-2 max-h-44 overflow-y-auto">
+            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
               {activeSources.length > 0 ? (
                 activeSources.map((source) => {
                   const isPdf = source.title?.toLowerCase().endsWith('.pdf');
@@ -438,24 +586,24 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                     <div
                       key={source.id}
                       onClick={() => openDocumentViewer(source.id, 1, source.title)}
-                      className="p-2.5 rounded-xl bg-[#f9f3eb] flex items-center justify-between group hover:bg-[#ede7df] transition-colors cursor-pointer"
+                      className="p-3 rounded-2xl bg-[#fbf8f5] flex items-center justify-between group hover:bg-[#f4ece3] border border-[#ede7df]/60 hover:border-[#dfb59d] transition-all cursor-pointer shadow-2xs"
                       title="Click to view full source document"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`w-7 h-7 rounded-lg ${badgeColor} flex items-center justify-center shrink-0`}>
-                          <span className="material-symbols-outlined text-[16px]">{icon}</span>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-8 h-8 rounded-xl ${badgeColor} flex items-center justify-center shrink-0 shadow-2xs`}>
+                          <span className="material-symbols-outlined text-[18px]">{icon}</span>
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <span className="text-[12px] font-bold text-[#1d1b17] truncate" title={source.title}>
+                          <span className="text-[13px] sm:text-[14px] font-bold text-[#1d1b17] truncate" title={source.title}>
                             {source.title}
                           </span>
-                          <span className="text-[10px] text-[#4f453f] uppercase font-semibold flex items-center gap-1">
+                          <span className="text-[11px] text-[#4f453f] uppercase font-semibold flex items-center gap-1">
                             {source.source_type ? `${source.source_type.toUpperCase()} • Click to view` : 'Active'}
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[15px] text-[#81756e] group-hover:text-[#745948] transition-colors" title="View file">
+                      <div className="flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[17px] text-[#81756e] group-hover:text-[#745948] transition-colors" title="View file">
                           visibility
                         </span>
                         <button
@@ -463,22 +611,22 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                           className="text-[#81756e] hover:text-[#ba1a1a] opacity-0 group-hover:opacity-100 transition-opacity p-1 cursor-pointer"
                           title="Remove source"
                         >
-                          <span className="material-symbols-outlined text-[16px]">close</span>
+                          <span className="material-symbols-outlined text-[18px]">close</span>
                         </button>
                       </div>
                     </div>
                   );
                 })
               ) : (
-                <div className="p-4 rounded-xl bg-[#f9f3eb]/60 border border-dashed border-[#ede7df] flex flex-col items-center justify-center text-center gap-1 py-4">
-                  <span className="material-symbols-outlined text-[20px] text-[#81756e]">
+                <div className="p-4 rounded-2xl bg-[#f9f3eb]/60 border border-dashed border-[#ede7df] flex flex-col items-center justify-center text-center gap-1.5 py-5">
+                  <span className="material-symbols-outlined text-[24px] text-[#81756e]">
                     auto_stories
                   </span>
-                  <span className="text-[11px] font-semibold text-[#1d1b17]">
+                  <span className="text-[13px] font-bold text-[#1d1b17]">
                     No files attached to this session
                   </span>
-                  <span className="text-[10px] text-[#81756e]">
-                    Click below to upload a textbook or slide deck.
+                  <span className="text-[11px] text-[#81756e]">
+                    Click below to upload a textbook or lecture notes.
                   </span>
                 </div>
               )}
@@ -491,23 +639,23 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                 setUploadError(null);
                 setUploadSuccess(null);
               }}
-              className="w-full py-2.5 px-3 rounded-xl bg-[#745948] hover:bg-[#5a4132] text-white text-[12px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer mt-1"
+              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-[#745948] to-[#5e4334] hover:from-[#5e4334] hover:to-[#4a3428] text-white text-[13px] sm:text-[14px] font-bold flex items-center justify-center gap-2 transition-all shadow-sm hover:shadow-md cursor-pointer mt-1"
             >
-              <span className="material-symbols-outlined text-[16px]">add_circle</span>
+              <span className="material-symbols-outlined text-[18px]">add_circle</span>
               <span>Upload Source</span>
             </button>
           </div>
 
           {/* Previous Study Sessions */}
-          <div className="p-4 rounded-3xl bg-white shadow-sm border border-[#ede7df] flex flex-col gap-2.5 flex-1 min-h-[160px] overflow-hidden">
+          <div className="p-4 sm:p-5 rounded-3xl bg-white shadow-sm border border-[#ede7df] flex flex-col gap-3 flex-1 min-h-[160px] overflow-hidden">
             <div className="flex items-center justify-between shrink-0">
-              <span className="text-[12px] font-bold uppercase tracking-wider text-[#4f453f]">
-                Previous Chapters & Sessions
+              <span className="text-[13px] font-black uppercase tracking-wider text-[#745948] flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[18px]">history</span>
+                Previous Sessions
               </span>
-              <span className="material-symbols-outlined text-[16px] text-[#81756e]">history</span>
             </div>
 
-            <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 pr-1">
+            <div className="flex flex-col gap-2 overflow-y-auto flex-1 pr-1">
               {filteredConversations.length > 0 ? (
                 filteredConversations.map((conv) => {
                   const isActive = conv.id === activeConvId;
@@ -515,17 +663,17 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                     <div
                       key={conv.id}
                       onClick={() => selectConversation(conv.id)}
-                      className={`p-2.5 rounded-xl flex items-center justify-between cursor-pointer transition-colors group ${
+                      className={`p-3 rounded-2xl flex items-center justify-between cursor-pointer transition-all group ${
                         isActive
-                          ? 'bg-[#f3cfba]/40 border border-[#f3cfba]'
-                          : 'hover:bg-[#f9f3eb]'
+                          ? 'bg-gradient-to-r from-[#f3cfba]/50 to-[#fdfbf9] border border-[#e5beaa] shadow-xs'
+                          : 'hover:bg-[#f9f3eb] border border-transparent'
                       }`}
                     >
                       <div className="flex flex-col min-w-0 pr-2">
-                        <span className="text-[12px] font-bold text-[#1d1b17] truncate" title={conv.title}>
+                        <span className="text-[13px] sm:text-[14px] font-bold text-[#1d1b17] truncate" title={conv.title}>
                           {conv.title || 'Study Session'}
                         </span>
-                        <span className="text-[10px] text-[#81756e]">
+                        <span className="text-[11px] text-[#81756e] font-medium">
                           {conv.message_count ? `${conv.message_count} messages` : 'New session'}
                         </span>
                       </div>
@@ -534,71 +682,75 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                         className="text-[#81756e] hover:text-[#ba1a1a] opacity-0 group-hover:opacity-100 transition-opacity p-1"
                         title="Delete session"
                       >
-                        <span className="material-symbols-outlined text-[14px]">delete</span>
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
                       </button>
                     </div>
                   );
                 })
               ) : (
-                <div className="p-4 rounded-xl bg-[#f9f3eb]/60 text-center py-4">
-                  <span className="text-[11px] text-[#81756e]">No previous sessions found</span>
+                <div className="p-4 rounded-2xl bg-[#f9f3eb]/60 text-center py-5">
+                  <span className="text-[12px] text-[#81756e] font-medium">No previous sessions found</span>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Chat Canvas (Fixed Height, Internal Scroll) */}
-        <div className="lg:col-span-8 flex flex-col h-full rounded-3xl bg-white shadow-md border border-[#ede7df] overflow-hidden">
+        {/* RIGHT COLUMN: Chat Canvas (Edge-to-Edge, Full Width, Fixed Height, Internal Scroll) */}
+        <div className="lg:col-span-8 xl:col-span-9 flex flex-col h-full rounded-3xl bg-white shadow-md border border-[#ede7df] overflow-hidden min-h-0">
 
           {/* Session Header */}
-          <div className="px-6 py-4 border-b border-[#ede7df] flex items-center justify-between shrink-0 bg-[#f9f3eb]/40">
+          <div className="px-6 py-4 border-b border-[#ede7df] flex items-center justify-between shrink-0 bg-[#f9f3eb]/50 backdrop-blur-xs">
             <div className="flex flex-col min-w-0">
-              <span className="text-[11px] font-bold text-[#81756e] uppercase tracking-wider flex items-center gap-1.5">
-                <span className="px-2 py-0.5 rounded-full bg-[#ede7df] text-[10px] text-[#1d1b17] font-semibold">
-                  {activeTopic}
-                </span>
+              <span className="text-[12px] font-bold text-[#81756e] uppercase tracking-wider flex items-center gap-2">
+                {activeTopic && activeTopic.toLowerCase() !== 'general' && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#ede7df] text-[11px] text-[#1d1b17] font-bold border border-[#ded5cb] truncate max-w-[280px]">
+                    {activeTopic}
+                  </span>
+                )}
                 <span>• Study Workspace</span>
                 {activeSources.length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-[#c0ddd0] text-[#052018] text-[10px] font-bold">
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#c0ddd0] text-[#052018] text-[11px] font-bold border border-[#a6cebc] inline-flex items-center gap-1">
                     {activeSources.length} Source{activeSources.length > 1 ? 's' : ''} Attached
                   </span>
                 )}
               </span>
-              <h1 className="text-[18px] sm:text-[20px] font-bold text-[#1d1b17] truncate pt-0.5">
+              <h1 className="text-[20px] sm:text-[22px] font-black text-[#1d1b17] tracking-tight truncate pt-1">
                 {activeTitle}
               </h1>
             </div>
 
-            <button
-              onClick={() => {
-                setShowUploadModal(true);
-                setUploadError(null);
-                setUploadSuccess(null);
-              }}
-              className="px-3.5 py-1.5 rounded-full bg-[#745948] hover:bg-[#5a4132] text-white text-[12px] font-bold flex items-center gap-1 shadow-sm transition-all cursor-pointer shrink-0"
-            >
-              <span className="material-symbols-outlined text-[16px]">add</span>
-              <span>Upload Source</span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  setShowUploadModal(true);
+                  setUploadError(null);
+                  setUploadSuccess(null);
+                }}
+                className="px-4 py-2 rounded-2xl bg-gradient-to-r from-[#745948] to-[#5e4334] hover:from-[#5e4334] hover:to-[#4a3428] text-white text-[13px] sm:text-[14px] font-bold flex items-center gap-1.5 shadow-sm hover:shadow-md transition-all cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">add</span>
+                <span>Upload Source</span>
+              </button>
+            </div>
           </div>
 
           {/* Scrollable Chat History Container */}
-          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-7 flex flex-col gap-5 sm:gap-6 min-h-0">
             {messages.length === 0 ? (
-              <div className="p-8 rounded-2xl bg-[#f9f3eb]/60 border border-dashed border-[#ede7df] flex flex-col items-center justify-center text-center gap-3 my-auto">
-                <div className="w-12 h-12 rounded-2xl bg-[#f3cfba] text-[#725746] flex items-center justify-center shadow-xs">
-                  <span className="material-symbols-outlined text-[24px]">school</span>
+              <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-b from-[#fbf8f5] to-[#f6efe6] border border-dashed border-[#ede7df] flex flex-col items-center justify-center text-center gap-4 my-auto shadow-xs">
+                <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#f3cfba] to-[#eec0a5] text-[#5e4334] flex items-center justify-center shadow-sm">
+                  <span className="material-symbols-outlined text-[30px]">school</span>
                 </div>
-                <div className="flex flex-col gap-1 max-w-md">
-                  <h3 className="text-[16px] font-bold text-[#1d1b17]">
+                <div className="flex flex-col gap-1.5 max-w-lg">
+                  <h3 className="text-[20px] sm:text-[22px] font-black text-[#1d1b17] tracking-tight">
                     How can I assist your study today?
                   </h3>
-                  <p className="text-[13px] text-[#4f453f] leading-relaxed">
+                  <p className="text-[15px] sm:text-[16px] text-[#4f453f] leading-relaxed">
                     Ask any question, formula derivation, or concept explanation from your uploaded materials.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2 justify-center pt-2">
+                <div className="flex flex-wrap gap-2.5 justify-center pt-2 max-w-2xl">
                   {[
                     'Explain forward difference method step-by-step',
                     'What is interpolation and how does it work?',
@@ -611,7 +763,7 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                         const el = document.getElementById('chat-input-field');
                         el?.focus();
                       }}
-                      className="px-3 py-1.5 rounded-full bg-white hover:bg-[#ede7df] text-[12px] font-medium text-[#4f453f] border border-[#ede7df] shadow-xs transition-colors cursor-pointer"
+                      className="px-4 py-2.5 rounded-2xl bg-white hover:bg-[#ede7df] text-[14px] font-semibold text-[#4f453f] border border-[#ede7df] shadow-xs hover:shadow-sm transition-all cursor-pointer active:scale-98"
                     >
                       {example}
                     </button>
@@ -620,37 +772,37 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
               </div>
             ) : (
               messages.map((msg) => (
-                <div key={msg.id} className="flex flex-col gap-1.5">
-                  <div className="flex items-center gap-2">
+                <div key={msg.id} className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2.5">
                     {msg.sender === 'user' ? (
                       <>
-                        <div className="w-6 h-6 rounded-full bg-[#ede7df] flex items-center justify-center text-[11px] font-bold text-[#745948]">
+                        <div className="w-7 h-7 rounded-full bg-[#f3cfba] border border-[#e5beaa] flex items-center justify-center text-[12px] font-black text-[#5e4334] shadow-2xs">
                           U
                         </div>
-                        <span className="text-[12px] font-bold text-[#1d1b17]">You</span>
+                        <span className="text-[14px] font-black text-[#1d1b17]">You</span>
                       </>
                     ) : (
                       <>
-                        <div className="w-6 h-6 rounded-full bg-[#745948] text-white flex items-center justify-center text-[12px]">
-                          <span className="material-symbols-outlined text-[14px]">school</span>
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#745948] to-[#5e4334] text-white flex items-center justify-center text-[13px] shadow-2xs">
+                          <span className="material-symbols-outlined text-[16px]">school</span>
                         </div>
-                        <span className="text-[12px] font-bold text-[#1d1b17]">Tutor</span>
+                        <span className="text-[14px] font-black text-[#1d1b17]">Tutor</span>
                       </>
                     )}
-                    <span className="text-[11px] text-[#81756e]">{msg.timestamp}</span>
+                    <span className="text-[12px] text-[#81756e] font-medium">{msg.timestamp}</span>
                   </div>
 
                   <div
-                    className={`p-4 rounded-2xl leading-relaxed ${
+                    className={`leading-relaxed transition-all ${
                       msg.sender === 'user'
-                        ? 'bg-[#f9f3eb] text-[#1d1b17] text-[14px]'
-                        : 'bg-white border border-[#ede7df] text-[14px] text-[#1d1b17] shadow-xs'
+                        ? 'p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-[#f9f3eb] via-[#f5ede2] to-[#ede3d5] text-[#1d1b17] text-[16px] sm:text-[17px] border border-[#ede7df] shadow-xs font-normal'
+                        : 'p-6 sm:p-7 rounded-3xl bg-white/95 backdrop-blur-xs border border-[#ede7df] text-[16px] sm:text-[17px] text-[#1d1b17] shadow-[0_8px_30px_rgba(116,89,72,0.06)] hover:shadow-[0_12px_36px_rgba(116,89,72,0.09)]'
                     }`}
                   >
                     {msg.sender === 'socratic-guide' ? (
-                      <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-3.5">
                         <MarkdownRenderer
-                          content={msg.text}
+                          content={stripFollowUpOptionsFromText(msg.text)}
                           onCitationClick={(pageNum) => {
                             const matchingCite = msg.citations?.find((c: any) => c.page === pageNum);
                             const docId = matchingCite?.document_id || activeSources[0]?.id;
@@ -661,14 +813,14 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
 
                         {/* Citations */}
                         {msg.citations && msg.citations.length > 0 && (
-                          <div className="mt-3 pt-2.5 border-t border-[#ede7df] flex flex-col gap-1.5">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#81756e] flex items-center gap-1">
-                              <span className="material-symbols-outlined text-[13px] text-[#745948]">
+                          <div className="mt-4 pt-3.5 border-t border-[#ede7df] flex flex-col gap-2">
+                            <span className="text-[12px] font-extrabold uppercase tracking-wider text-[#745948] flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-[15px] text-[#745948]">
                                 menu_book
                               </span>
                               Source References (Click to view exact page):
                             </span>
-                            <div className="flex flex-wrap gap-1.5">
+                            <div className="flex flex-wrap gap-2">
                               {msg.citations.map((cite: any, cIdx: number) => {
                                 const pageNum = cite.page || 1;
                                 const docId = cite.document_id || activeSources[0]?.id;
@@ -678,22 +830,22 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                                     key={cIdx}
                                     type="button"
                                     onClick={() => openDocumentViewer(docId, pageNum, title)}
-                                    className="px-2.5 py-1 rounded-lg bg-[#f9f3eb] hover:bg-[#ede7df] border border-[#ede7df] hover:border-[#745948]/50 text-[11px] text-[#4f453f] hover:text-[#1d1b17] flex items-center gap-1.5 transition-all cursor-pointer group shadow-2xs"
+                                    className="px-2.5 py-1 rounded-lg bg-[#fbf8f5] hover:bg-[#f3ebe0] border border-[#ede7df] hover:border-[#745948]/50 text-[11px] sm:text-[12px] text-[#4f453f] hover:text-[#1d1b17] flex items-center gap-1.5 transition-all cursor-pointer group shadow-2xs hover:shadow-xs font-medium"
                                     title={`Click to open PDF directly at Page ${pageNum}`}
                                   >
                                     <span className="material-symbols-outlined text-[13px] text-[#745948] group-hover:scale-110 transition-transform">
                                       menu_book
                                     </span>
-                                    <span className="font-semibold text-[#1d1b17] truncate max-w-[220px]">
+                                    <span className="font-bold text-[#1d1b17] truncate max-w-[200px]">
                                       {title}
                                     </span>
                                     {cite.page && (
-                                      <span className="bg-[#ede7df] group-hover:bg-[#dfd4c5] px-1.5 py-0.2 rounded font-bold text-[#745948]">
+                                      <span className="bg-[#ede7df] group-hover:bg-[#dfd4c5] px-1.5 py-0.2 rounded font-black text-[#745948] text-[10px]">
                                         • p. {cite.page}
                                       </span>
                                     )}
                                     {cite.section && (
-                                      <span className="text-[#81756e]">
+                                      <span className="text-[#81756e] text-[10px]">
                                         • §{cite.section}
                                       </span>
                                     )}
@@ -707,36 +859,54 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
                           </div>
                         )}
 
-                        {/* Follow-up Quick Prompts */}
+                        {/* Interactive Next Learning Topic Buttons */}
                         {msg.followUps && msg.followUps.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                            {msg.followUps.map((fu, fIdx) => (
-                              <button
-                                key={fIdx}
-                                onClick={() => {
-                                  setInputText(fu);
-                                  const el = document.getElementById('chat-input-field');
-                                  el?.focus();
-                                }}
-                                className="px-2.5 py-1 rounded-full bg-[#ede7df] hover:bg-[#e2c0ab] text-[11px] font-semibold text-[#1d1b17] transition-all cursor-pointer"
-                              >
-                                {fu}
-                              </button>
-                            ))}
-                            {onNavigateToQuiz && (
-                              <button
-                                onClick={onNavigateToQuiz}
-                                className="px-2.5 py-1 rounded-full bg-[#ede7df] hover:bg-[#e2c0ab] text-[11px] font-semibold text-[#1d1b17] flex items-center gap-1 transition-all cursor-pointer"
-                              >
-                                <span className="material-symbols-outlined text-[13px]">quiz</span>
-                                <span>Practice Quiz</span>
-                              </button>
-                            )}
+                          <div className="mt-5 pt-4 border-t border-[#ede7df] flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[12px] sm:text-[13px] font-black uppercase tracking-wider text-[#745948] flex items-center gap-2">
+                                <span className="material-symbols-outlined text-[18px]">
+                                  {msg.text.toLowerCase().includes('what do you already know') || msg.text.toLowerCase().includes('quick options') || msg.text.toLowerCase().includes('familiar are you') ? 'tune' : 'route'}
+                                </span>
+                                {msg.text.toLowerCase().includes('what do you already know') || msg.text.toLowerCase().includes('quick options') || msg.text.toLowerCase().includes('familiar are you')
+                                  ? 'Quick Options (Click to select):'
+                                  : 'Next Learning Steps (Click to start):'}
+                              </span>
+                              {onNavigateToQuiz && (
+                                <button
+                                  type="button"
+                                  onClick={onNavigateToQuiz}
+                                  className="text-[12px] sm:text-[13px] font-bold text-[#745948] hover:text-[#523d2f] flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-[#ede7df] transition-colors cursor-pointer"
+                                >
+                                  <span className="material-symbols-outlined text-[15px]">quiz</span>
+                                  <span>Practice Quiz</span>
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-2.5">
+                              {msg.followUps.map((topicOpt, fIdx) => (
+                                <button
+                                  key={fIdx}
+                                  type="button"
+                                  disabled={isLoadingApi}
+                                  onClick={() => handleSendMessage(topicOpt)}
+                                  className="px-4 py-3 rounded-2xl bg-gradient-to-r from-[#fdfbf9] to-[#f9f3eb] hover:from-[#f9e5d9] hover:to-[#f3cfba] text-[#5e4334] hover:text-[#38261c] border border-[#e8dfd5] hover:border-[#dfb59d] font-bold text-[14px] sm:text-[15px] shadow-xs hover:shadow-md flex items-center gap-2.5 transition-all cursor-pointer group active:scale-98 disabled:opacity-50"
+                                  title={`Click to learn: ${topicOpt}`}
+                                >
+                                  <span className="w-6 h-6 rounded-lg bg-[#ede7df] group-hover:bg-[#dfd4c5] text-[#745948] flex items-center justify-center text-[11px] font-black shrink-0">
+                                    {fIdx + 1}
+                                  </span>
+                                  <span className="truncate max-w-[320px]">{topicOpt}</span>
+                                  <span className="material-symbols-outlined text-[16px] text-[#81756e] group-hover:text-[#745948] group-hover:translate-x-1 transition-transform">
+                                    arrow_forward
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
                     ) : (
-                      <p className="whitespace-pre-wrap">{msg.text}</p>
+                      <p className="whitespace-pre-wrap">{stripFollowUpOptionsFromText(msg.text)}</p>
                     )}
                   </div>
                 </div>
@@ -744,8 +914,8 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
             )}
 
             {isLoadingApi && (
-              <div className="flex items-center gap-2 text-[12px] text-[#745948] p-3 rounded-xl bg-[#f9f3eb] animate-pulse">
-                <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
+              <div className="flex items-center gap-2.5 text-[14px] font-semibold text-[#745948] p-4 rounded-2xl bg-[#f9f3eb] border border-[#ede7df] animate-pulse">
+                <span className="material-symbols-outlined text-[20px] animate-spin text-[#745948]">sync</span>
                 <span>Tutor is formulating your step-by-step explanation...</span>
               </div>
             )}
@@ -754,40 +924,40 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
           </div>
 
           {/* Sticky Bottom Input Bar */}
-          <div className="p-4 border-t border-[#ede7df] bg-white shrink-0">
-            <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+          <div className="p-4 sm:p-5 border-t border-[#ede7df] bg-white shrink-0">
+            <form onSubmit={handleSendMessage} className="flex items-center gap-3">
               <input
                 id="chat-input-field"
                 type="text"
                 placeholder="Ask your tutor a question or tell what you'd like to understand..."
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                className="flex-1 px-4 py-3 rounded-2xl bg-[#f9f3eb] text-[14px] text-[#1d1b17] border border-[#ede7df] focus:outline-none focus:ring-2 focus:ring-[#745948]/30"
+                className="flex-1 px-5 py-4 rounded-2xl bg-[#fbf8f5] text-[16px] sm:text-[17px] text-[#1d1b17] border border-[#e8dfd5] shadow-inner focus:outline-none focus:ring-2 focus:ring-[#745948]/25 focus:border-[#745948] placeholder:text-[#998b81] transition-all"
               />
               <button
                 type="button"
                 onClick={() => setIsRecordingMic(!isRecordingMic)}
-                className={`p-3 rounded-2xl border transition-colors cursor-pointer shrink-0 ${
+                className={`p-3.5 sm:p-4 rounded-2xl border transition-colors cursor-pointer shrink-0 ${
                   isRecordingMic
                     ? 'bg-[#ba1a1a] text-white border-[#ba1a1a]'
-                    : 'bg-[#f9f3eb] text-[#81756e] border-[#ede7df] hover:text-[#1d1b17]'
+                    : 'bg-[#f9f3eb] text-[#81756e] border-[#ede7df] hover:text-[#1d1b17] hover:bg-[#ede7df]'
                 }`}
                 title="Voice input"
               >
-                <span className="material-symbols-outlined text-[20px]">mic</span>
+                <span className="material-symbols-outlined text-[22px]">mic</span>
               </button>
               <button
                 type="submit"
                 disabled={!inputText.trim() || isLoadingApi}
-                className={`p-3 px-5 rounded-2xl font-bold text-[14px] flex items-center gap-1.5 transition-all shrink-0 cursor-pointer ${
+                className={`px-7 py-3.5 sm:py-4 rounded-2xl font-black text-[15px] sm:text-[16px] flex items-center gap-2 transition-all shrink-0 cursor-pointer ${
                   !inputText.trim() || isLoadingApi
                     ? 'bg-[#ede7df] text-[#81756e] cursor-not-allowed'
-                    : 'bg-[#745948] hover:bg-[#5a4132] text-white shadow-sm'
+                    : 'bg-gradient-to-r from-[#745948] to-[#5e4334] hover:from-[#5e4334] hover:to-[#4a3428] text-white shadow-md hover:shadow-lg active:scale-98'
                 }`}
                 title="Send question"
               >
                 <span>Send</span>
-                <span className="material-symbols-outlined text-[18px]">send</span>
+                <span className="material-symbols-outlined text-[20px]">send</span>
               </button>
             </form>
           </div>
@@ -1050,15 +1220,36 @@ export const TutorPage: React.FC<TutorWorkspaceProps> = ({
 
             {/* Modal Body / Embedded PDF */}
             <div className="flex-1 w-full bg-[#525659] relative">
-              <iframe
+              <object
                 key={`${viewerState.documentId}-${viewerState.page}`}
-                src={`/api/documents/${viewerState.documentId}/file#page=${viewerState.page}`}
+                data={`/api/documents/${viewerState.documentId}/file#page=${viewerState.page}`}
+                type="application/pdf"
                 className="w-full h-full border-0"
-                title={`PDF Viewer for ${viewerState.documentTitle}`}
-              />
+              >
+                <iframe
+                  src={`/api/documents/${viewerState.documentId}/file#page=${viewerState.page}`}
+                  className="w-full h-full border-0"
+                  title={`PDF Viewer for ${viewerState.documentTitle}`}
+                />
+              </object>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Socratic Hint Ladder Modal */}
+      {hintLadderState.isOpen && (
+        <SocraticHintLadderModal
+          isOpen={hintLadderState.isOpen}
+          onClose={() => setHintLadderState({ isOpen: false, problemText: '' })}
+          conversationId={activeConvId || 'default_conv'}
+          initialProblemText={hintLadderState.problemText}
+          onCitationClick={(pageNum) => {
+            const docId = activeSources[0]?.id;
+            const docTitle = activeSources[0]?.title || 'Course Material';
+            openDocumentViewer(docId, pageNum, docTitle);
+          }}
+        />
       )}
     </div>
   );

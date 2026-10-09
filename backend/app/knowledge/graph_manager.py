@@ -25,7 +25,8 @@ class GraphManager:
         end_time: Optional[str] = None,
         document_order: int = 0,
         summary_excerpt: Optional[str] = None,
-        keywords: Optional[List[str]] = None
+        keywords: Optional[List[str]] = None,
+        auto_commit: bool = True
     ) -> ConceptGraphNode:
         norm_name = name.strip().lower()
         existing = self.db.query(ConceptGraphNode).filter(
@@ -39,8 +40,9 @@ class GraphManager:
                 existing.page_number = page_number
             if description and not existing.description:
                 existing.description = description
-            self.db.commit()
-            self.db.refresh(existing)
+            if auto_commit:
+                self.db.commit()
+                self.db.refresh(existing)
             return existing
 
         node = ConceptGraphNode(
@@ -60,8 +62,9 @@ class GraphManager:
             keywords=keywords or []
         )
         self.db.add(node)
-        self.db.commit()
-        self.db.refresh(node)
+        if auto_commit:
+            self.db.commit()
+            self.db.refresh(node)
         return node
 
     def add_relationship(
@@ -72,7 +75,8 @@ class GraphManager:
         provenance_doc_id: Optional[str] = None,
         page_number: Optional[int] = None,
         source_chunk_id: Optional[str] = None,
-        confidence: float = 1.0
+        confidence: float = 1.0,
+        auto_commit: bool = True
     ) -> Optional[ConceptRelationship]:
         if source_concept_id == target_concept_id:
             return None
@@ -91,8 +95,9 @@ class GraphManager:
                 existing.page_number = page_number
             if source_chunk_id and not existing.source_chunk_id:
                 existing.source_chunk_id = source_chunk_id
-            self.db.commit()
-            self.db.refresh(existing)
+            if auto_commit:
+                self.db.commit()
+                self.db.refresh(existing)
             return existing
 
         rel = ConceptRelationship(
@@ -105,8 +110,9 @@ class GraphManager:
             confidence=confidence
         )
         self.db.add(rel)
-        self.db.commit()
-        self.db.refresh(rel)
+        if auto_commit:
+            self.db.commit()
+            self.db.refresh(rel)
         return rel
 
     def get_prerequisites_for_concept(self, concept_id: str) -> List[ConceptGraphNode]:

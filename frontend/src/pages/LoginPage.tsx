@@ -15,14 +15,30 @@ export const LoginPage: React.FC<WelcomeScreenProps> = ({
   tactileAssistActive,
   onToggleTactileAssist,
 }) => {
-  const [email, setEmail] = useState('elena.scholar@university.edu');
-  const [password, setPassword] = useState('••••••••••••');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(true);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (email && email.includes('@')) {
+      const namePart = email.split('@')[0].replace(/[._]/g, ' ').trim();
+      if (namePart && !['elena', 'elena scholar', 'scholar', 'guest', 'user', 'test'].includes(namePart.toLowerCase())) {
+        const cleanName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+        localStorage.setItem('user_name', cleanName);
+      } else {
+        localStorage.removeItem('user_name');
+      }
+    } else {
+      localStorage.removeItem('user_name');
+    }
     onStartLearning();
+  };
+
+  const handleGuestExplore = () => {
+    localStorage.removeItem('user_name');
+    onExploreGuest();
   };
 
   return (
@@ -134,6 +150,7 @@ export const LoginPage: React.FC<WelcomeScreenProps> = ({
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      placeholder="student@university.edu"
                       className="w-full pl-10 pr-4 py-3 rounded-2xl bg-[#ede7df]/60 text-[#1d1b17] text-[14px] border border-transparent shadow-[inset_0_2px_4px_rgba(175,160,147,0.2)] focus:outline-none focus:ring-2 focus:ring-[#745948]/40"
                     />
                   </div>
@@ -159,6 +176,7 @@ export const LoginPage: React.FC<WelcomeScreenProps> = ({
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
                       className="w-full pl-11 pr-12 py-3 rounded-2xl bg-[#ede7df]/60 text-[#1d1b17] text-[14px] border border-transparent shadow-[inset_0_2px_4px_rgba(175,160,147,0.2)] focus:outline-none focus:ring-2 focus:ring-[#745948]/40"
                     />
                     <button
@@ -198,7 +216,7 @@ export const LoginPage: React.FC<WelcomeScreenProps> = ({
                 {/* Secondary CTA: Guest Demo Mode */}
                 <button
                   type="button"
-                  onClick={onExploreGuest}
+                  onClick={handleGuestExplore}
                   className="w-full py-3 px-6 rounded-full bg-[#cbe3f6]/80 hover:bg-[#cbe3f6] text-[#2c4e68] font-bold text-[14px] shadow-sm active:scale-[0.99] transition-all cursor-pointer flex items-center justify-center gap-2 border border-[#cbe3f6]/60"
                 >
                   <span className="material-symbols-outlined text-[17px]">explore</span>

@@ -21,3 +21,5 @@
 **/.env
 .vscode/
 .idea/
+scratch/
+**/scratch/

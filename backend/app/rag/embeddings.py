@@ -25,7 +25,10 @@ def get_sentence_transformer_model():
             from sentence_transformers import SentenceTransformer
             model_name = os.getenv("EMBEDDING_MODEL_LOCAL", "all-MiniLM-L6-v2")
             logger.info(f"Loading local SentenceTransformer model '{model_name}'...")
-            _ST_MODEL = SentenceTransformer(model_name)
+            try:
+                _ST_MODEL = SentenceTransformer(model_name, local_files_only=True)
+            except Exception:
+                _ST_MODEL = SentenceTransformer(model_name)
             logger.info("SentenceTransformer model loaded successfully.")
         except Exception as e:
             logger.warning(f"Could not load SentenceTransformer ({e}). Local fallback active.")
@@ -114,4 +117,26 @@ def generate_embedding(text: str) -> List[float]:
     return vector.tolist()
 
 def generate_batch_embeddings(texts: List[str]) -> List[List[float]]:
+    if not texts:
+        return []
+
+    st_model = get_sentence_transformer_model()
+    if st_model is not None:
+        try:
+            embs = st_model.encode(texts, batch_size=64, convert_to_numpy=True, show_progress_bar=False)
+            res = []
+            for emb in embs:
+                if len(emb) < 1536:
+                    padded = np.zeros(1536, dtype=np.float32)
+                    padded[:len(emb)] = emb
+                    norm = np.linalg.norm(padded)
+                    if norm > 0:
+                        padded = padded / norm
+                    res.append(padded.tolist())
+                else:
+                    res.append(emb.tolist())
+            return res
+        except Exception as e:
+            logger.warning(f"Batch SentenceTransformer encoding failed: {e}. Falling back to sequential.")
+
     return [generate_embedding(t) for t in texts]

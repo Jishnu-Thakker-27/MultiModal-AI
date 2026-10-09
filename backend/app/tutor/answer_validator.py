@@ -67,6 +67,18 @@ class AnswerValidator:
         if "service unavailable" in ans_lower or "not covered in your uploaded course material" in ans_lower:
             return answer, citations
 
+        # 2. Suppress citations if this is an introductory diagnostic question asking for prior knowledge
+        is_diagnostic_probe = any(probe_phr in ans_lower for probe_phr in [
+            "what do you already know",
+            "what do you think this topic is about",
+            "what do you think it is about",
+            "before we dive in, i would love to know",
+            "before we jump in",
+            "share your thoughts freely, or reply"
+        ])
+        if is_diagnostic_probe:
+            citations = []
+
         # 2. Semantic & Keyword Target Match Check
         t_clean = (target_name or "").strip().lower()
         if not t_clean:

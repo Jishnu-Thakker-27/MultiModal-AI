@@ -1,17 +1,23 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ScreenType } from './types';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { LoginPage } from './pages/LoginPage';
+import { MainScreen, ParsedAcademicIntent } from './pages/MainScreen';
 import { TutorPage } from './pages/TutorPage';
 import { QuizzesPage } from './pages/QuizzesPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { LibraryPage } from './pages/LibraryPage';
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [currentScreen, setCurrentScreen] = useState<ScreenType>('welcome');
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
+  const [currentScreen, setCurrentScreen] = useState<ScreenType>('os-home');
   const [tactileAssistActive, setTactileAssistActive] = useState<boolean>(false);
+  const [pendingTopic, setPendingTopic] = useState<string | null>(null);
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [pendingDifficulty, setPendingDifficulty] = useState<string | null>(null);
+  const [pendingUploadCategory, setPendingUploadCategory] = useState<'pdf' | 'ppt' | 'video' | 'audio' | null>(null);
+  const [pendingAutoOpenUpload, setPendingAutoOpenUpload] = useState<boolean>(false);
   const [infoModal, setInfoModal] = useState<{
     title: string;
     description: string;
@@ -39,13 +45,39 @@ export default function App() {
 
   const handleLogin = () => {
     setIsLoggedIn(true);
-    setCurrentScreen('tutor-workspace');
+    setCurrentScreen('os-home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('user_name');
     setIsLoggedIn(false);
     setCurrentScreen('welcome');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleOSCommand = (command: string, parsed: ParsedAcademicIntent) => {
+    if (parsed.intent === 'LEARN_TOPIC') {
+      setPendingTopic(parsed.topic || null);
+      setPendingPrompt(parsed.originalPrompt);
+      setPendingUploadCategory(parsed.uploadCategory || null);
+      setPendingAutoOpenUpload(Boolean(parsed.autoOpenUpload));
+      setCurrentScreen('tutor-workspace');
+    } else if (parsed.intent === 'QUIZ_TOPIC') {
+      setPendingTopic(parsed.topic || null);
+      setPendingDifficulty(parsed.difficulty || 'adaptive');
+      setCurrentScreen('adaptive-quizzes');
+    } else if (parsed.intent === 'ANALYTICS') {
+      setCurrentScreen('learning-analytics');
+    } else if (parsed.intent === 'LIBRARY') {
+      setCurrentScreen('library-and-sources');
+    } else {
+      setPendingTopic(parsed.topic || null);
+      setPendingPrompt(parsed.originalPrompt);
+      setPendingUploadCategory(parsed.uploadCategory || null);
+      setPendingAutoOpenUpload(Boolean(parsed.autoOpenUpload));
+      setCurrentScreen('tutor-workspace');
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -85,8 +117,22 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const isTutorWorkspace = currentScreen === 'tutor-workspace';
+
+  if (currentScreen === 'os-home' && isLoggedIn) {
+    return (
+      <MainScreen
+        onExecuteCommand={handleOSCommand}
+        onNavigate={handleNavigate}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen flex flex-col font-sans transition-colors duration-200 bg-[#fff8f0] text-[#1d1b17]">
+    <div className={`w-full font-sans transition-colors duration-200 bg-[#fff8f0] text-[#1d1b17] flex flex-col ${
+      isTutorWorkspace ? 'h-screen overflow-hidden' : 'min-h-screen'
+    }`}>
       {/* Top Sticky Navigation Bar - Only visible AFTER login */}
       {isLoggedIn && (
         <Header
@@ -99,7 +145,11 @@ export default function App() {
       )}
 
       {/* Main Studio Viewport */}
-      <main className="w-full flex-1 px-3 sm:px-6 lg:px-8 max-w-7xl mx-auto py-6 sm:py-8 flex flex-col justify-center">
+      <main className={
+        isTutorWorkspace
+          ? "w-full flex-1 px-3 sm:px-4 py-2 sm:py-3 flex flex-col overflow-hidden min-h-0"
+          : "w-full flex-1 px-3 sm:px-6 lg:px-8 max-w-7xl mx-auto py-6 sm:py-8 flex flex-col justify-center"
+      }>
         {!isLoggedIn || currentScreen === 'welcome' ? (
           <LoginPage
             onStartLearning={handleLogin}
@@ -111,6 +161,10 @@ export default function App() {
           <>
             {currentScreen === 'tutor-workspace' && (
               <TutorPage
+                initialTopic={pendingTopic || undefined}
+                initialPrompt={pendingPrompt || undefined}
+                initialUploadCategory={pendingUploadCategory || undefined}
+                autoOpenUpload={pendingAutoOpenUpload}
                 onNavigateToQuiz={() => handleNavigate('adaptive-quizzes')}
                 onNavigateToSources={() => handleNavigate('library-and-sources')}
               />
@@ -118,6 +172,8 @@ export default function App() {
 
             {currentScreen === 'adaptive-quizzes' && (
               <QuizzesPage
+                initialTopic={pendingTopic || undefined}
+                initialDifficulty={pendingDifficulty || undefined}
                 onBackToWorkspace={() => handleNavigate('tutor-workspace')}
                 onNavigateToSources={() => handleNavigate('library-and-sources')}
               />
@@ -140,8 +196,8 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer - Only visible after login */}
-      {isLoggedIn && (
+      {/* Footer - Visible on non-workspace pages */}
+      {isLoggedIn && !isTutorWorkspace && (
         <Footer
           onEthicsClick={handleEthicsClick}
           onLabClick={handleLabClick}

@@ -20,6 +20,14 @@ def is_document_overview_query(query: str) -> bool:
         r'^(?:provide|give|show|generate)?\s*(?:me\s+|an?\s+)*(?:overview|summary|recap|outline)\s*(?:of|for)?\s*(?:the|this|uploaded)?\s*(?:document|chapter|unit|material|file|topics|key concepts)?',
         r'\b(?:main topics|key concepts|what does this document cover|what is covered in this document|what is this document about|what topics are in this document)\b'
     ]
+    overview_phrases = {
+        "explain me", "explain to me", "explain", "teach me", "start", "begin",
+        "explain this", "explain pdf", "explain this pdf", "explain this topic",
+        "explain this material", "explain chapter", "explain this chapter",
+        "tell me about this", "what is this about", "teach this", "teach this to me"
+    }
+    if q in overview_phrases or any(q.startswith(p) for p in ["explain this", "explain pdf", "explain the pdf", "explain my pdf", "explain document", "explain me "]):
+        return True
     return any(re.search(p, q, re.IGNORECASE) for p in patterns)
 
 def generate_concept_aliases(concept_name: str) -> List[str]:
@@ -148,8 +156,16 @@ class TargetResolver:
         display_target = target_root if target_root else raw_target
 
         is_follow_up = False
+        follow_up_phrases = [
+            "partial idea", "understand the hints", "completely new", "skip hints",
+            "move to next", "move to the next", "let's start", "guide me", "ready!", "ready",
+            "start from", "foundational basics", "show a quick", "i have a question",
+            "i understand", "next basic topic"
+        ]
+        q_lower = normalized_query.strip().lower()
+        is_nav_response = any(p in q_lower for p in follow_up_phrases)
+
         if conversation_history:
-            q_lower = normalized_query.strip().lower()
             pronouns = ["it", "this", "that", "them", "again", "why is that", "explain more", "continue", "how so"]
             domain_math_words = [
                 "difference", "interpolation", "divided", "forward", "backward", "formula",
@@ -159,22 +175,33 @@ class TargetResolver:
             has_pronoun = any(re.search(r'\b' + re.escape(p) + r'\b', q_lower) for p in pronouns)
             has_domain_word = any(w in q_lower for w in domain_math_words)
 
-            # ONLY treat as follow-up if query explicitly refers to previous context AND has no new domain keywords
-            if (has_pronoun or q_lower in ["why?", "how?", "explain again", "more", "tell me more"]) and not has_domain_word:
+            # Treat as follow-up if query explicitly refers to previous context OR is a navigation/comfort response
+            if (has_pronoun or is_nav_response or q_lower in ["why?", "how?", "explain again", "more", "tell me more"]) and (is_nav_response or not has_domain_word):
                 for msg in reversed(conversation_history):
                     role = (msg.get("role") or msg.get("sender") or "").lower()
                     if role not in ["user", "student"]:
                         continue
 
                     content = msg.get("content", "")
-                    if content and not content.lower().startswith("why") and not content.lower().startswith("how"):
-                        prev_target = self.extract_raw_target_candidate(content)
-                        if prev_target and len(prev_target) > 1:
-                            raw_target = prev_target
-                            aliases = generate_concept_aliases(raw_target)
-                            display_target = raw_target
-                            is_follow_up = True
-                            break
+                    if content:
+                        c_lower = content.lower()
+                        if not any(p in c_lower for p in follow_up_phrases) and not c_lower.startswith("why") and not c_lower.startswith("how"):
+                            prev_target = self.extract_raw_target_candidate(content)
+                            if prev_target and len(prev_target) > 1:
+                                raw_target = prev_target
+                                aliases = generate_concept_aliases(raw_target)
+                                display_target = raw_target
+                                is_follow_up = True
+                                break
+
+        # Fallback to conversation topic_name if target resolved to a navigation response
+        if is_nav_response and not is_follow_up and conversation_id:
+            conv = self.repo.get_conversation(conversation_id)
+            if conv and conv.topic_name and conv.topic_name not in ["General", "New Study Session"]:
+                raw_target = conv.topic_name
+                aliases = generate_concept_aliases(raw_target)
+                display_target = raw_target
+                is_follow_up = True
 
         if allowed_doc_ids:
             chunks = self.db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(allowed_doc_ids)).all()

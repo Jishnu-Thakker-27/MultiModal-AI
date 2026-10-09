@@ -70,41 +70,47 @@ def extract_and_build_concept_graph(
                         end_time=end_t,
                         document_order=order_idx,
                         summary_excerpt=text[:250],
-                        keywords=[w.lower() for w in name_clean.split() if len(w) > 3]
+                        keywords=[w.lower() for w in name_clean.split() if len(w) > 3],
+                        auto_commit=False
                     )
                     created_nodes.append(node)
 
-    # Link sequential prerequisite and container relationships with exact provenance
+    # Flush session so all newly created nodes have primary key UUIDs populated
+    db.flush()
+
+    # Link sequential prerequisite and container relationships with exact provenance (bounded to nearest preceding concepts)
     definitions = [n for n in created_nodes if n.concept_type in ["definition", "principle"]]
     operations = [n for n in created_nodes if n.concept_type == "operation"]
     algorithms = [n for n in created_nodes if n.concept_type in ["algorithm", "application"]]
     formulas = [n for n in created_nodes if n.concept_type == "formula"]
 
-    # 1. Definitions are prerequisites of operations
-    for d_node in definitions:
-        for op_node in operations:
-            if op_node.document_order >= d_node.document_order:
-                graph_mgr.add_relationship(
-                    source_concept_id=d_node.id,
-                    target_concept_id=op_node.id,
-                    relationship_type="prerequisite_of",
-                    provenance_doc_id=document_id,
-                    page_number=op_node.page_number or d_node.page_number,
-                    confidence=0.9
-                )
-
-    # 2. Operations are prerequisites of algorithms
+    # 1. Definitions are prerequisites of operations (connect to nearest preceding definitions)
     for op_node in operations:
-        for alg_node in algorithms:
-            if alg_node.document_order >= op_node.document_order:
-                graph_mgr.add_relationship(
-                    source_concept_id=op_node.id,
-                    target_concept_id=alg_node.id,
-                    relationship_type="prerequisite_of",
-                    provenance_doc_id=document_id,
-                    page_number=alg_node.page_number or op_node.page_number,
-                    confidence=0.85
-                )
+        preceding_defs = [d for d in definitions if d.document_order <= op_node.document_order]
+        for d_node in preceding_defs[-2:]:  # Nearest 2 preceding definitions
+            graph_mgr.add_relationship(
+                source_concept_id=d_node.id,
+                target_concept_id=op_node.id,
+                relationship_type="prerequisite_of",
+                provenance_doc_id=document_id,
+                page_number=op_node.page_number or d_node.page_number,
+                confidence=0.9,
+                auto_commit=False
+            )
+
+    # 2. Operations are prerequisites of algorithms (connect to nearest preceding operations)
+    for alg_node in algorithms:
+        preceding_ops = [op for op in operations if op.document_order <= alg_node.document_order]
+        for op_node in preceding_ops[-2:]:  # Nearest 2 preceding operations
+            graph_mgr.add_relationship(
+                source_concept_id=op_node.id,
+                target_concept_id=alg_node.id,
+                relationship_type="prerequisite_of",
+                provenance_doc_id=document_id,
+                page_number=alg_node.page_number or op_node.page_number,
+                confidence=0.85,
+                auto_commit=False
+            )
 
     # 3. Formulas explain or belong to operations/algorithms
     for f_node in formulas:
@@ -116,8 +122,72 @@ def extract_and_build_concept_graph(
                     relationship_type="explained_by",
                     provenance_doc_id=document_id,
                     page_number=f_node.page_number,
-                    confidence=0.95
+                    confidence=0.95,
+                    auto_commit=False
                 )
+
+    # Commit all graph nodes and edges in a single atomic transaction
+    try:
+        db.commit()
+    except Exception as db_err:
+        db.rollback()
+        logger.warning(f"Failed to commit concept graph batch: {db_err}")
 
     logger.info(f"Generalized concept extractor built {len(created_nodes)} concept nodes with provenance for document {document_id}")
     return created_nodes
+
+
+def build_curriculum_progression(created_nodes: List[Any], doc_title: str) -> Dict[str, Any]:
+    """
+    Constructs an explicit section-wise, topic-wise pedagogical progression from basics to advanced.
+    Stages:
+    1. Basics & Foundations (Definitions, elementary parameters, mental model)
+    2. Core Mechanisms & Operations (Differences, operators, table construction)
+    3. Mathematical Formulas & Procedures (Interpolation formulas, parameter p)
+    4. Advanced Applications & Worked Exercises (Numerical examples, error analysis)
+    """
+    clean_title = re.sub(r'\.(pdf|pptx|docx|txt)$', '', doc_title, flags=re.I)
+    main_topic = re.sub(r'[-_–]', ' ', clean_title).strip().title()
+
+    definitions = [n.name for n in created_nodes if getattr(n, "concept_type", "") in ["definition", "principle"]]
+    operations = [n.name for n in created_nodes if getattr(n, "concept_type", "") == "operation"]
+    algorithms = [n.name for n in created_nodes if getattr(n, "concept_type", "") in ["algorithm", "application"]]
+    formulas = [n.name for n in created_nodes if getattr(n, "concept_type", "") == "formula"]
+
+    stage_1_topics = definitions[:4] if definitions else [f"{main_topic} Core Concept", "Arguments & Entries", "Interpolation vs Extrapolation"]
+    stage_2_topics = operations[:4] if operations else ["Forward Difference Operator Δ", "Finite Difference Table Construction"]
+    stage_3_topics = (formulas + algorithms)[:4] if (formulas + algorithms) else ["Newton's Forward Interpolation Formula", "Step Parameter p"]
+    stage_4_topics = [n.name for n in created_nodes if getattr(n, "concept_type", "") == "application"][:4] or ["Step-by-Step Worked Problem", "Sanity Check & Practice Exercises"]
+
+    progression = [
+        {
+            "stage_number": 1,
+            "level": "Basics & Foundations",
+            "topics": stage_1_topics,
+            "pedagogical_goal": "Establish intuitive mental model, notation, arguments, entries, and core concepts."
+        },
+        {
+            "stage_number": 2,
+            "level": "Core Mechanisms & Operations",
+            "topics": stage_2_topics,
+            "pedagogical_goal": "Understand finite differences, operators, and difference table construction."
+        },
+        {
+            "stage_number": 3,
+            "level": "Formulas & Procedures",
+            "topics": stage_3_topics,
+            "pedagogical_goal": "Apply mathematical formulas, parameters, and polynomial deductions."
+        },
+        {
+            "stage_number": 4,
+            "level": "Advanced Applications & Exercises",
+            "topics": stage_4_topics,
+            "pedagogical_goal": "Solve full numerical problems step-by-step with sanity checks and exam takeaways."
+        }
+    ]
+
+    return {
+        "main_topic": main_topic,
+        "stages": progression
+    }
+

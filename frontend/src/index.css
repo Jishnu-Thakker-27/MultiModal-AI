@@ -19,9 +19,12 @@
 html, body {
   margin: 0;
   padding: 0;
+  height: 100%;
+  width: 100%;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  background-color: #fff8f0 !important;
-  color: #1d1b17 !important;
+  background-color: #09090b;
+  color: #1d1b17;
+  overflow: hidden;
 }
 
 body {

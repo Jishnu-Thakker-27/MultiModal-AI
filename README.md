@@ -61,38 +61,89 @@ Code/
 
 ## Quick Start Instructions
 
-### 1. Environment Setup
+### 1. Prerequisites
+- **Node.js**: v18.0.0 or higher
+- **Python**: 3.10, 3.11, 3.12, 3.13, or 3.14
+- **Package Managers**: `npm` for frontend, `pip` or `uv` for backend
 
-Create `.env` file in `backend/`:
+### 2. Backend Setup & Run
+
+1. Navigate to the project root and create `.env` inside `backend/`:
 
 ```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/study_companion
+DATABASE_URL=sqlite:///./study_companion.db
 SQLITE_FALLBACK=true
 
 OPENAI_API_KEY=your_openai_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
 LLM_MODEL=gpt-4o-mini
 EMBEDDING_MODEL=text-embedding-3-small
 CHUNK_SIZE=500
 CHUNK_OVERLAP=50
 ```
 
-### 2. Start Backend API
-
+2. Install backend dependencies:
 ```bash
-cd backend
-python -m uvicorn app.main:app --reload --port 8000
+pip install -r backend/requirements.txt
 ```
 
-Backend API Docs will be available at `http://localhost:8000/docs`.
+3. Start Backend API on **Port 8001** (mandatory for frontend proxy):
 
-### 3. Start Frontend
+- **Windows PowerShell**:
+```powershell
+$env:PYTHONPATH="backend"; python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
+```
+- **macOS / Linux**:
+```bash
+PYTHONPATH=backend python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
+```
+
+Backend API Docs will be available at `http://127.0.0.1:8001/docs`.
+
+### 3. Frontend Setup & Run
+
+> [!IMPORTANT]
+> **CRITICAL FOR ALL CONTRIBUTORS**: After pulling or cloning the repository, you **MUST** run `npm install` inside the `frontend` folder before starting the dev server.
 
 ```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-Frontend application will run at `http://localhost:3000`.
+Frontend application will run at `http://localhost:3000` (or the port Vite assigns).
+
+---
+
+## 🛠️ Contributor Troubleshooting & Prerequisites Guide
+
+If you or a contributor experience any of the following issues after pulling from GitHub, follow the steps below:
+
+### 1. Seeing Raw Asterisks (`**`) or Dollar Signs (`$ ... $`) Instead of Formatted Math / Bold Text
+- **Cause**: The frontend dependencies for mathematical rendering (`katex`, `remark-math`, `rehype-katex`) were not installed, or your local dev server was started without running `npm install`.
+- **Solution**:
+  1. Stop your frontend dev server.
+  2. Run:
+     ```bash
+     cd frontend
+     npm install
+     npm run dev
+     ```
+  3. Hard-refresh your browser (`Ctrl + Shift + R` or `Cmd + Shift + R`).
+  4. Math equations will now render as formatted LaTeX, and bold text/tables will render cleanly.
+
+### 2. Backend Connection Refused / 404 / 500 on Chat or Uploads
+- **Cause**: The backend was run on port `8000` instead of `8001`. The frontend Vite configuration proxies `/api` directly to `http://127.0.0.1:8001`.
+- **Solution**: Ensure your uvicorn command specifies `--port 8001`:
+  ```bash
+  python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
+  ```
+
+### 3. Document Preview / Source File Not Opening
+- **Cause**: The browser blocked iframe embedding, or the document file was uploaded before the latest schema update.
+- **Solution**:
+  - The document preview modal now includes an **"Open in Tab"** button in the top right. Clicking it directly opens the PDF in a new tab positioned at the cited page (e.g. `#page=21`).
+  - Supported document types for inline rendering: PDF (`.pdf`), PPTX (`.pptx`), and Video/Audio notes.
 
 ---
 

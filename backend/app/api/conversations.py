@@ -13,7 +13,9 @@ from app.schemas.schemas import (
     ConversationUpdateRequest,
     ChatRequest,
     ChatResponse,
-    DocumentResponse
+    DocumentResponse,
+    HintLadderRequest,
+    HintLadderResponse
 )
 from app.rag.retriever import retrieve_top_chunks
 from app.rag.reranker import rerank_chunks
@@ -22,6 +24,7 @@ from app.tutor.intent_classifier import classify_learning_intent
 from app.tutor.prerequisite_resolver import PrerequisiteResolver
 from app.tutor.teaching_planner import TeachingPlanner
 from app.tutor.answer_validator import validate_tutor_response
+from app.tutor.hint_ladder import generate_socratic_hint
 from app.rag.hierarchical_retriever import retrieve_hierarchical_chunks, retrieve_document_summary_chunks
 from app.knowledge.graph_manager import GraphManager
 from app.ingestion.pdf_processor import extract_pdf_content
@@ -43,6 +46,24 @@ def clean_chapter_name(title: str) -> str:
     clean = re.sub(r'\s*-\s*', ' - ', clean)
     clean = clean.replace('_', ' ').strip()
     return clean
+
+def clean_topic_name(title: str) -> str:
+    """
+    Extracts the substantive topic name by stripping chapter/unit/lecture/module prefixes.
+    e.g. 'Chapter 6 - Numerical Solution of ODEs.pdf' -> 'Numerical Solution of ODEs'
+    e.g. 'Chapter 2- Probability Distribution.pdf' -> 'Probability Distribution'
+    """
+    if not title:
+        return "Course Material"
+    name = clean_chapter_name(title)
+    name = re.sub(r'^(?:chapter|lecture|unit|module|section|part)\s*\d+[\s\-_–:]*', '', name, flags=re.I).strip()
+    return name if name else clean_chapter_name(title)
+
+def is_generic_topic(topic: Optional[str]) -> bool:
+    if not topic:
+        return True
+    t = topic.strip().lower()
+    return t in ["general", "course material", "study session", "new study session", "none", "null", "untitled", ""]
 
 def is_placeholder_title(title: Optional[str]) -> bool:
     if not title:
@@ -69,20 +90,24 @@ def list_conversations(
         last_msg = msgs[-1]["created_at"] if msgs else (c.updated_at or c.created_at or datetime.utcnow())
         
         resolved_title = c.title
-        if is_placeholder_title(resolved_title):
-            if docs and docs[0].title:
+        resolved_topic = c.topic_name
+        if docs and docs[0].title:
+            doc_topic = clean_topic_name(docs[0].title)
+            if is_placeholder_title(resolved_title):
                 resolved_title = clean_chapter_name(docs[0].title)
                 repo.update_conversation(c.id, title=resolved_title)
-            elif msgs and msgs[0].get("content"):
-                first_q = msgs[0]["content"].strip()
-                resolved_title = first_q[:35] + ("..." if len(first_q) > 35 else "")
-                repo.update_conversation(c.id, title=resolved_title)
+            if is_generic_topic(resolved_topic):
+                resolved_topic = doc_topic
+                repo.update_conversation(c.id, topic_name=resolved_topic)
+        elif not docs and is_generic_topic(resolved_topic) and not is_placeholder_title(resolved_title):
+            resolved_topic = clean_topic_name(resolved_title)
+            repo.update_conversation(c.id, topic_name=resolved_topic)
 
         res.append(ConversationResponse(
             id=c.id,
             title=resolved_title or "Study Session",
             course_id=c.course_id,
-            topic_name=c.topic_name,
+            topic_name=resolved_topic or "Course Material",
             status=c.status,
             message_count=len(msgs),
             last_message_at=last_msg,
@@ -120,6 +145,7 @@ def create_conversation(
 
         intent_info = classify_learning_intent(question)
         learner_profile = repo.get_learner_profile(user_id=user_id, course_id=conv.course_id)
+        resolved_student_name = payload.student_name if payload.student_name and payload.student_name.strip().lower() not in ["demo_student", "guest", "student", "jishnu", "default", "none"] else None
         if intent_info["intent"] in {"OVERVIEW", "DOCUMENT_SUMMARY"}:
             retrieved_chunks = retrieve_document_summary_chunks(db, conversation_id=conv.id, top_k=8)
             docs = repo.get_conversation_documents(conv.id)
@@ -127,14 +153,15 @@ def create_conversation(
             if docs and docs[0].title:
                 clean_title = re.sub(r'\.(pdf|pptx|docx|txt)$', '', docs[0].title, flags=re.I)
                 doc_title = re.sub(r'[-_–]', ' ', clean_title).strip()
-            pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO", "learner_profile": learner_profile}
-            teaching_plan = {"target_name": doc_title, "coverage_state": "STATE_C_SUFFICIENT_INFO", "teaching_stage": "DOCUMENT_OVERVIEW", "is_document_summary": True, "tone": "Intuitive Analogy"}
+            pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO", "learner_profile": learner_profile, "student_name": resolved_student_name}
+            teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks, tone="Intuitive Analogy", conversation_history=[])
         else:
             pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
                 course_id=conv.course_id or "default_course", user_id=user_id, query=question,
                 intent=intent_info["intent"], conversation_id=conv.id
             )
             pedagogical_context["learner_profile"] = learner_profile
+            pedagogical_context["student_name"] = resolved_student_name
             retrieved_chunks = retrieve_hierarchical_chunks(
                 db=db, query=question, target_name=pedagogical_context.get("target_name"),
                 conversation_id=conv.id, course_id=conv.course_id, intent=intent_info["intent"],
@@ -143,7 +170,7 @@ def create_conversation(
                 is_introductory=pedagogical_context.get("is_introductory_request", True), top_k=5,
                 user_id=user_id, learner_profile=learner_profile
             )
-            teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks, tone="Intuitive Analogy")
+            teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks, tone="Intuitive Analogy", conversation_history=[])
         raw_answer, citations, is_grounded = generate_grounded_answer(question, retrieved_chunks, teaching_plan, conversation_history=[])
         answer, citations = validate_tutor_response(raw_answer, pedagogical_context.get("target_name"), retrieved_chunks, citations)
         repo.save_chat_messages(conv.id, question, answer, citations)
@@ -185,16 +212,24 @@ def get_conversation_details(
         })
 
     resolved_title = conv.title
-    if is_placeholder_title(resolved_title):
-        if documents and documents[0].title:
+    resolved_topic = conv.topic_name
+    if documents and documents[0].title:
+        doc_topic = clean_topic_name(documents[0].title)
+        if is_placeholder_title(resolved_title):
             resolved_title = clean_chapter_name(documents[0].title)
             repo.update_conversation(conv.id, title=resolved_title)
+        if is_generic_topic(resolved_topic):
+            resolved_topic = doc_topic
+            repo.update_conversation(conv.id, topic_name=resolved_topic)
+    elif not documents and is_generic_topic(resolved_topic) and not is_placeholder_title(resolved_title):
+        resolved_topic = clean_topic_name(resolved_title)
+        repo.update_conversation(conv.id, topic_name=resolved_topic)
 
     return ConversationDetailResponse(
         id=conv.id,
         title=resolved_title or "Study Session",
         course_id=conv.course_id,
-        topic_name=conv.topic_name,
+        topic_name=resolved_topic or "Course Material",
         status=conv.status,
         created_at=conv.created_at or datetime.utcnow(),
         updated_at=conv.updated_at or conv.created_at or datetime.utcnow(),
@@ -267,22 +302,77 @@ def chat_in_conversation(
 
     learner_profile = repo.get_learner_profile(user_id=user_id, course_id=conv.course_id)
 
+    # Check if student is answering the 3-hint initial diagnostic probe
+    is_answering_probe = False
+    if messages:
+        for prev_m in reversed(messages):
+            sender = prev_m.get("sender") or prev_m.get("role")
+            if sender in ("assistant", "socratic-guide"):
+                c_low = prev_m.get("content", "").lower()
+                if any(term in c_low for term in ["how much do you know about", "first hint", "second hint", "third hint", "guiding hints", "let me know how much you know", "before we start the topic"]):
+                    is_answering_probe = True
+                break
+
+    diagnosed_sync_score = None
+    diagnosed_sync_level = None
+    if is_answering_probe:
+        q_low = question.lower()
+        if any(w in q_low for w in ["completely new", "zero", "beginner", "no idea", "don't know", "never heard", "guide me step-by-step"]):
+            diagnosed_sync_score = 0.25
+            diagnosed_sync_level = "Beginner (Ground Zero)"
+        elif any(w in q_low for w in ["understand the hints", "know this", "familiar", "safe", "rate of change", "already know"]):
+            diagnosed_sync_score = 0.85
+            diagnosed_sync_level = "Advanced (High Sync)"
+        elif any(w in q_low for w in ["partial", "some idea", "little", "basics", "somewhat", "not quite sure"]):
+            diagnosed_sync_score = 0.60
+            diagnosed_sync_level = "Intermediate (Partial Sync)"
+        elif "skip" in q_low:
+            diagnosed_sync_score = 0.70
+            diagnosed_sync_level = "Proficient (Direct Track)"
+        else:
+            diagnosed_sync_score = 0.65 if len(q_low.split()) > 5 else 0.45
+            diagnosed_sync_level = "Developing Sync"
+
+
     # 2. Generalized Target & 3-State Coverage Resolution (Strictly scoped to this conversation's attached sources!)
+    resolved_student_name = payload.student_name if payload.student_name and payload.student_name.strip().lower() not in ["demo_student", "guest", "student", "jishnu", "default", "none"] else None
     if intent_info["intent"] in {"OVERVIEW", "DOCUMENT_SUMMARY"}:
         docs = repo.get_conversation_documents(conversation_id)
         doc_title = "Uploaded Course Material"
         if docs and docs[0].title:
             clean_title = re.sub(r'\.(pdf|pptx|docx|txt)$', '', docs[0].title, flags=re.I)
             doc_title = re.sub(r'[-_–]', ' ', clean_title).strip()
-        pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO", "learner_profile": learner_profile}
+        pedagogical_context = {"target_name": doc_title, "target_coverage_state": "STATE_C_SUFFICIENT_INFO", "learner_profile": learner_profile, "student_name": resolved_student_name}
         retrieved_chunks = retrieve_document_summary_chunks(db, conversation_id=conversation_id, top_k=8)
-        teaching_plan = {"target_name": doc_title, "coverage_state": "STATE_C_SUFFICIENT_INFO", "teaching_stage": "DOCUMENT_OVERVIEW", "is_document_summary": True, "tone": tone}
+        teaching_plan = TeachingPlanner().create_plan(
+            question, intent_info, pedagogical_context, retrieved_chunks, tone=tone, conversation_history=messages
+        )
     else:
         pedagogical_context = PrerequisiteResolver(db).resolve_pedagogical_context(
             course_id=conv.course_id or "default_course", user_id=user_id, query=question,
             intent=intent_info["intent"], conversation_id=conversation_id, conversation_history=messages
         )
         pedagogical_context["learner_profile"] = learner_profile
+        pedagogical_context["student_name"] = resolved_student_name
+
+        # Ensure target_name stays locked to the active topic across conversational diagnostic turns
+        resolved_target = pedagogical_context.get("target_name", "")
+        if conv.topic_name and not is_generic_topic(conv.topic_name):
+            if not resolved_target or is_generic_topic(resolved_target) or len(resolved_target.split()) > 3 or resolved_target.lower() in ["explain topic", "explain the topic", "the requested concept"]:
+                pedagogical_context["target_name"] = conv.topic_name
+        else:
+            docs = repo.get_conversation_documents(conversation_id)
+            if docs and docs[0].title:
+                clean_title = clean_topic_name(docs[0].title)
+                pedagogical_context["target_name"] = clean_title
+                repo.update_conversation(conversation_id, topic_name=clean_title)
+            elif not is_placeholder_title(conv.title):
+                clean_title = clean_topic_name(conv.title)
+                pedagogical_context["target_name"] = clean_title
+                repo.update_conversation(conversation_id, topic_name=clean_title)
+        if diagnosed_sync_score is not None:
+            pedagogical_context["diagnosed_sync_score"] = diagnosed_sync_score
+            pedagogical_context["diagnosed_sync_level"] = diagnosed_sync_level
         retrieved_chunks = retrieve_hierarchical_chunks(
             db=db, query=question, target_name=pedagogical_context.get("target_name"),
             conversation_id=conversation_id, course_id=conv.course_id, intent=intent_info["intent"],
@@ -291,7 +381,9 @@ def chat_in_conversation(
             is_introductory=pedagogical_context.get("is_introductory_request", True), top_k=5,
             user_id=user_id, learner_profile=learner_profile
         )
-        teaching_plan = TeachingPlanner().create_plan(question, intent_info, pedagogical_context, retrieved_chunks, tone=tone)
+        teaching_plan = TeachingPlanner().create_plan(
+            question, intent_info, pedagogical_context, retrieved_chunks, tone=tone, conversation_history=messages
+        )
 
     # 5. Grounded Tutor Response Generation (3-State Model with Conversation History)
     raw_answer, citations, is_grounded = generate_grounded_answer(
@@ -315,6 +407,9 @@ def chat_in_conversation(
                 misconception_text=f"Struggling with concept '{target_node.name}': {question[:120]}",
                 severity="moderate"
             )
+        elif diagnosed_sync_score is not None:
+            GraphManager(db).update_student_concept_mastery(user_id, target_node.id, delta=diagnosed_sync_score)
+            logger.info(f"Recorded student '{user_id}' diagnostic sync for '{target_node.name}': {diagnosed_sync_score} ({diagnosed_sync_level})")
         else:
             GraphManager(db).update_student_concept_mastery(user_id, target_node.id, delta=0.2)
 
@@ -359,9 +454,15 @@ def attach_document(
     doc = repo.get_document(document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    repo.attach_document_to_conversation(conversation_id, document_id)
+    clean_name = clean_chapter_name(doc.title)
+    clean_topic = clean_topic_name(doc.title)
+    update_data = {}
     if is_placeholder_title(conv.title):
-        repo.update_conversation(conversation_id, title=clean_chapter_name(doc.title))
+        update_data["title"] = clean_name
+    if is_generic_topic(conv.topic_name):
+        update_data["topic_name"] = clean_topic
+    if update_data:
+        repo.update_conversation(conversation_id, **update_data)
     return {"status": "success", "message": f"Document '{doc.title}' attached to conversation."}
 
 @router.post("/{conversation_id}/upload")
@@ -441,10 +542,16 @@ def upload_source_to_conversation(
 
     repo.attach_document_to_conversation(conversation_id, doc.id)
 
-    # Set conversation title to the clean document/chapter name if currently placeholder
+    # Set conversation title and topic_name to the clean document/chapter name
+    clean_name = clean_chapter_name(file.filename)
+    clean_topic = clean_topic_name(file.filename)
+    update_data = {}
     if is_placeholder_title(conv.title):
-        clean_name = clean_chapter_name(file.filename)
-        repo.update_conversation(conversation_id, title=clean_name)
+        update_data["title"] = clean_name
+    if is_generic_topic(conv.topic_name):
+        update_data["topic_name"] = clean_topic
+    if update_data:
+        repo.update_conversation(conversation_id, **update_data)
 
     return {
         "status": "success",
@@ -453,3 +560,25 @@ def upload_source_to_conversation(
         "source_type": doc.source_type,
         "chunks_count": len(chunks_data)
     }
+
+@router.post("/{conversation_id}/hint-ladder", response_model=HintLadderResponse)
+def request_hint_ladder(
+    conversation_id: str,
+    payload: HintLadderRequest,
+    db: Session = Depends(get_db)
+):
+    repo = Repository(db)
+    conv = repo.get_conversation(conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    hint_data = generate_socratic_hint(
+        db=db,
+        conversation_id=conversation_id,
+        problem_text=payload.problem_text,
+        hint_level=payload.hint_level,
+        student_attempt=payload.student_attempt,
+        user_id=payload.user_id or "demo_student"
+    )
+
+    return HintLadderResponse(**hint_data)

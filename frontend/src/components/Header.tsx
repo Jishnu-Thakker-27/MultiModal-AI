@@ -53,6 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   const navItems: { label: string; screen: ScreenType; icon: string }[] = [
+    { label: 'OS Command', screen: 'os-home', icon: 'terminal' },
     { label: 'Tutor Workspace', screen: 'tutor-workspace', icon: 'psychology' },
     { label: 'Adaptive Quizzes', screen: 'adaptive-quizzes', icon: 'quiz' },
     { label: 'Learning Analytics', screen: 'learning-analytics', icon: 'analytics' },
@@ -60,11 +61,11 @@ export const Header: React.FC<HeaderProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 left-0 right-0 z-50 w-full bg-white/90 backdrop-blur-xl border-b border-[#ede7df]/80 shadow-[0_4px_24px_rgba(195,180,170,0.18)] transition-colors">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="h-16 sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
+    <header className="sticky top-0 left-0 right-0 z-50 w-full bg-white/90 backdrop-blur-xl border-b border-[#ede7df]/80 shadow-[0_4px_24px_rgba(195,180,170,0.18)] transition-colors shrink-0">
+      <div className="w-full px-4 sm:px-6">
+        <div className="h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
           <div
-            onClick={() => onNavigate('tutor-workspace')}
+            onClick={() => onNavigate('os-home')}
             className="flex items-center gap-3 cursor-pointer group select-none shrink-0"
           >
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#745948] via-[#5c4436] to-[#3d2b21] text-white font-extrabold text-[20px] flex items-center justify-center shadow-md shadow-[#745948]/25 group-hover:scale-105 group-hover:shadow-lg transition-all duration-300 border border-[#f3cfba]/30">
@@ -160,6 +161,24 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
 
                   <div className="flex flex-col gap-1 pt-1 border-t border-[#ede7df]">
+                    <button
+                      onClick={() => {
+                        onNavigate('os-home');
+                        setProfileOpen(false);
+                      }}
+                      className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-[#f9f3eb] transition-colors group cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-2.5 text-[#1d1b17] text-[13px] font-semibold">
+                        <span className="material-symbols-outlined text-[18px] text-[#745948]">
+                          terminal
+                        </span>
+                        <span>AI Command Center</span>
+                      </div>
+                      <span className="material-symbols-outlined text-[16px] text-[#81756e] group-hover:translate-x-0.5 transition-transform">
+                        chevron_right
+                      </span>
+                    </button>
+
                     <button
                       onClick={() => {
                         onNavigate('learning-analytics');

@@ -3,6 +3,7 @@ import logging
 import re
 from typing import List, Dict, Any, Optional
 from app.config import settings
+from app.providers.router import LLMProviderRouter
 
 logger = logging.getLogger("study_companion.assessment.generator")
 
@@ -11,177 +12,186 @@ def generate_questions_from_content(
     chunks: List[Dict[str, Any]],
     difficulty: str = "Medium",
     question_count: int = 5,
-    question_type: str = "MCQ"
+    question_type: str = "MCQ",
+    total_marks: int = 10,
+    marks_per_question: float = 2.0,
+    tracked_knowledge: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
-    Generates assessment questions grounded STRICTLY in retrieved course chunks.
-    Every question is tagged with exact source_chunk_ids and source_metadata.
+    Generates assessment questions grounded in course chunks and tailored to the student's
+    RAG-tracked knowledge level from conversational teaching.
+    Allocates exact marks per question summing up to total_marks (multiples of 10 up to 50).
     """
-    if not chunks:
-        logger.warning(f"No chunks retrieved for topic '{topic_name}'. Cannot generate grounded questions.")
-        return []
-
-    # Build context string with chunk IDs for exact source tracing
     context_blocks = []
-    for c in chunks:
-        c_id = c.get("chunk_id", "chunk_unknown")
-        doc_title = c.get("document_title", "Document")
-        context_blocks.append(f"[Chunk ID: {c_id} | Document: {doc_title}]\n{c.get('content', '')}")
+    if chunks:
+        for c in chunks:
+            c_id = c.get("chunk_id", "chunk_unknown")
+            doc_title = c.get("document_title", "Document")
+            context_blocks.append(f"[Chunk ID: {c_id} | Document: {doc_title}]\n{c.get('content', '')}")
+    else:
+        context_blocks.append(f"[General Course Context]\nCore University Curriculum Topic: {topic_name}")
 
     context_text = "\n\n".join(context_blocks)
 
-    if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY.strip():
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=settings.OPENAI_API_KEY)
-            prompt = f"""Generate {question_count} assessment questions of type '{question_type}' at '{difficulty}' difficulty for the topic '{topic_name}'.
+    # Determine pedagogical guidance based on tracked knowledge
+    knowledge_guidance = ""
+    if tracked_knowledge:
+        level = tracked_knowledge.get("tracked_level", "Intermediate")
+        pct = tracked_knowledge.get("mastery_percentage", 60.0)
+        reason = tracked_knowledge.get("calibration_reason", "")
+        misconceptions = tracked_knowledge.get("active_misconceptions", [])
+        misc_str = f" Target and resolve these student misconceptions: {misconceptions}." if misconceptions else ""
+        knowledge_guidance = (
+            f"STUDENT KNOWLEDGE PROFILE:\n"
+            f"- Tracked Knowledge Level: {level} ({pct}% mastery detected from Socratic conversation)\n"
+            f"- Calibration Note: {reason}{misc_str}\n"
+            f"- Tailor questions to challenge the student at this exact level, reinforcing concepts discussed in tutoring."
+        )
 
-CRITICAL GROUNDING RULES:
-1. Base questions STRICTLY on the retrieved course context provided below.
-2. Do NOT mention or invent concepts, formulas, or terms from unrelated subjects.
-3. Each question MUST specify the exact 'source_chunk_id' from the context that supports it.
+    router = LLMProviderRouter()
+    chunk_map = {c.get("chunk_id"): c for c in chunks} if chunks else {}
+    default_chunk = chunks[0] if chunks else {
+        "source_type": "pdf",
+        "document_title": f"{topic_name} Curriculum",
+        "page_number": 1,
+        "chunk_id": "chunk_topic_1"
+    }
 
-CONTEXT:
+    target_count = min(50, max(1, question_count))
+    batch_size = 10
+    num_batches = (target_count + batch_size - 1) // batch_size
+    all_questions: List[Dict[str, Any]] = []
+
+    for b_idx in range(num_batches):
+        cur_batch_target = min(batch_size, target_count - len(all_questions))
+        if cur_batch_target <= 0:
+            break
+
+        batch_prompt = f"""You are a Master University Professor and Assessment Author.
+Generate {cur_batch_target} distinct, high-quality assessment questions of type '{question_type}' for the topic '{topic_name}' (Batch {b_idx + 1} of {num_batches}).
+
+EXAM SPECIFICATIONS:
+- Target Topic: {topic_name}
+- Difficulty Level: {difficulty}
+- Total Exam Marks: {total_marks} Marks
+- Marks per Question: 1.0 Mark (Each question carries exactly 1 mark)
+- Question Count for this batch: {cur_batch_target}
+{knowledge_guidance}
+
+DIFFICULTY GUIDELINES:
+- Easy: Test foundational concepts, core definitions, intuitive terminology, and basic recognition.
+- Medium: Test operational mechanics, formula applications, procedural steps, and intermediate problem solving (calibrated to the learner's conversational progress).
+- Hard: Test advanced synthesis, multi-step problem solving, edge cases, and mathematical deductions.
+
+CRITICAL FORMATTING & CONTENT RULES:
+1. Ground questions directly in the provided context and fundamental subject principles of '{topic_name}'.
+2. For MCQ questions, provide EXACTLY 4 distinct, meaningful, plausible choices (Option A, Option B, Option C, Option D). Do NOT use generic placeholder choices like "None of the above" or "Invalid formulation".
+3. 'correct_answer' MUST exactly match one of the 4 options.
+4. Provide a clear, educational 'explanation' explaining why the correct answer is right and why the reasoning holds.
+5. In LaTeX math, use clean inline `$ ... $` syntax.
+6. Reference a valid 'source_chunk_id' from the context.
+7. Ensure questions in this batch are fresh and non-repetitive.
+
+COURSE CONTEXT:
 {context_text}
 
-OUTPUT FORMAT (JSON object with 'questions' array):
+OUTPUT FORMAT (Respond STRICTLY with valid JSON object):
 {{
   "questions": [
     {{
-      "question_text": "...",
+      "question_text": "Clear question text here...",
       "question_type": "{question_type}",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correct_answer": "Option A",
-      "explanation": "...",
+      "options": ["Choice A", "Choice B", "Choice C", "Choice D"],
+      "correct_answer": "Choice A",
+      "explanation": "Detailed step-by-step reasoning...",
       "difficulty": "{difficulty}",
+      "marks": 1.0,
       "topic_name": "{topic_name}",
       "source_chunk_ids": ["chunk_id_here"]
     }}
   ]
 }}"""
 
-            res = client.chat.completions.create(
-                model=settings.LLM_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
-                response_format={"type": "json_object"}
+        try:
+            response = router.generate(
+                prompt=batch_prompt,
+                system_prompt="You are an elite University Examiner creating rigorous, pedagogical course quizzes. Output only valid JSON."
             )
-            raw = res.choices[0].message.content
-            parsed = json.loads(raw)
-            questions_list = parsed.get("questions", parsed) if isinstance(parsed, dict) else parsed
-            
-            if isinstance(questions_list, list) and len(questions_list) > 0:
-                chunk_map = {c.get("chunk_id"): c for c in chunks}
-                for q in questions_list:
-                    q["topic_name"] = topic_name
-                    c_ids = q.get("source_chunk_ids", [])
-                    if c_ids and c_ids[0] in chunk_map:
-                        matching_c = chunk_map[c_ids[0]]
-                    else:
-                        matching_c = chunks[0]
-                        q["source_chunk_ids"] = [matching_c.get("chunk_id", "chunk_1")]
 
-                    q["source_metadata"] = {
-                        "source_type": matching_c.get("source_type", "pdf"),
-                        "document_title": matching_c.get("document_title", "Course Material"),
-                        "page": matching_c.get("page_number"),
-                        "slide": matching_c.get("slide_number"),
-                        "start_time": matching_c.get("start_time")
-                    }
-                return questions_list[:question_count]
+            if response.is_success and response.content:
+                raw = response.content.strip()
+                if raw.startswith("```"):
+                    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                    raw = re.sub(r"\s*```$", "", raw)
+
+                parsed = json.loads(raw)
+                questions_list = parsed.get("questions", parsed) if isinstance(parsed, dict) else parsed
+
+                if isinstance(questions_list, list) and len(questions_list) > 0:
+                    for idx, q in enumerate(questions_list):
+                        q["topic_name"] = topic_name
+                        q["difficulty"] = difficulty
+                        q["marks"] = 1.0
+                        q["total_marks"] = total_marks
+
+                        c_ids = q.get("source_chunk_ids", [])
+                        if c_ids and c_ids[0] in chunk_map:
+                            matching_c = chunk_map[c_ids[0]]
+                        else:
+                            matching_c = default_chunk
+                            q["source_chunk_ids"] = [matching_c.get("chunk_id", f"chunk_{len(all_questions)+idx+1}")]
+
+                        q["source_metadata"] = {
+                            "source_type": matching_c.get("source_type", "pdf"),
+                            "document_title": matching_c.get("document_title", f"{topic_name} Material"),
+                            "page": matching_c.get("page_number", 1),
+                            "slide": matching_c.get("slide_number"),
+                            "start_time": matching_c.get("start_time"),
+                            "marks": 1.0,
+                            "total_marks": total_marks,
+                            "calibrated_difficulty": difficulty,
+                            "tracked_knowledge": tracked_knowledge.get("tracked_level") if tracked_knowledge else None
+                        }
+                        all_questions.append(q)
+                        if len(all_questions) >= target_count:
+                            break
         except Exception as e:
-            logger.warning(f"LLM Question generation failed ({e}). Using content-grounded fallback generator.")
+            logger.warning(f"Batch {b_idx + 1} question generation failed ({e}). Proceeding to next or fallback.")
 
-    # Content-grounded fallback generator derived directly from chunk text
-    questions = []
+    if len(all_questions) >= target_count:
+        logger.info(f"Successfully generated {len(all_questions)} LLM questions for '{topic_name}' (1 mark each, {total_marks} marks total)")
+        return all_questions[:target_count]
+
+    # High-quality content-grounded fallback generator (fills remaining up to target_count)
+    from app.assessment.topic_banks import get_topic_question_bank
+    needed = target_count - len(all_questions)
+    bank_questions = get_topic_question_bank(topic_name, needed, difficulty)
+
     chunk_index = 0
-
-    while len(questions) < question_count and chunks:
-        c = chunks[chunk_index % len(chunks)]
+    for b_q in bank_questions:
+        c = chunks[chunk_index % len(chunks)] if chunks else default_chunk
         chunk_index += 1
+        c_id = c.get("chunk_id", f"chunk_{len(all_questions)+1}")
+        doc_title = c.get("document_title", f"{topic_name} Curriculum")
 
-        c_id = c.get("chunk_id", f"chunk_{chunk_index}")
-        c_text = c.get("content", "").strip()
-        doc_title = c.get("document_title", "Course Material")
-
-        src_meta = {
+        b_q["question_type"] = question_type
+        b_q["marks"] = 1.0
+        b_q["total_marks"] = total_marks
+        b_q["topic_name"] = topic_name
+        b_q["source_chunk_ids"] = [c_id]
+        b_q["source_metadata"] = {
             "source_type": c.get("source_type", "pdf"),
             "document_title": doc_title,
-            "page": c.get("page_number"),
+            "page": c.get("page_number", 1),
             "slide": c.get("slide_number"),
-            "start_time": c.get("start_time")
+            "start_time": c.get("start_time"),
+            "marks": 1.0,
+            "total_marks": total_marks,
+            "calibrated_difficulty": difficulty,
+            "tracked_knowledge": tracked_knowledge.get("tracked_level") if tracked_knowledge else None
         }
+        all_questions.append(b_q)
+        if len(all_questions) >= target_count:
+            break
 
-        sentences = [s.strip() for s in re.split(r'[.!?]', c_text) if len(s.strip()) > 15]
-        primary_sentence = sentences[(len(questions)) % len(sentences)] if sentences else c_text[:120]
-
-        if question_type == "MCQ":
-            q_num = len(questions) + 1
-            if q_num == 1:
-                q_text = f"According to the course material on '{topic_name}' ({doc_title}), which statement is correct?"
-                correct = primary_sentence
-                options = [
-                    correct,
-                    f"An incorrect statement regarding {topic_name}.",
-                    f"A concept not described in {doc_title}.",
-                    "None of the above."
-                ]
-            elif q_num == 2:
-                q_text = f"Which key concept is highlighted under '{topic_name}' in '{doc_title}'?"
-                correct = f"Primary concept: {primary_sentence[:80]}"
-                options = [
-                    correct,
-                    f"Unrelated concept outside {topic_name}.",
-                    "Hypothetical property not in source.",
-                    "Invalid formulation."
-                ]
-            else:
-                q_text = f"Based on '{doc_title}' for '{topic_name}', what does the text establish?"
-                correct = primary_sentence
-                options = [
-                    correct,
-                    "Contradictory claim.",
-                    "Unstated assertion.",
-                    "None of the choices."
-                ]
-
-            q_obj = {
-                "question_text": q_text,
-                "question_type": "MCQ",
-                "options": options,
-                "correct_answer": correct,
-                "explanation": f"Source chunk from '{doc_title}': '{primary_sentence}'",
-                "difficulty": difficulty,
-                "topic_name": topic_name,
-                "source_chunk_ids": [c_id],
-                "source_metadata": src_meta
-            }
-            questions.append(q_obj)
-        elif question_type == "Short Answer":
-            q_obj = {
-                "question_text": f"Based on '{doc_title}' under '{topic_name}', summarize the principle stated in: '{primary_sentence[:60]}...'",
-                "question_type": "Short Answer",
-                "options": None,
-                "correct_answer": primary_sentence,
-                "explanation": f"Source snippet from '{doc_title}': '{primary_sentence}'",
-                "difficulty": difficulty,
-                "topic_name": topic_name,
-                "source_chunk_ids": [c_id],
-                "source_metadata": src_meta
-            }
-            questions.append(q_obj)
-        else: # Numerical
-            q_obj = {
-                "question_text": f"Based on the quantitative metrics for '{topic_name}' in '{doc_title}', state the numeric value associated with the primary concept.",
-                "question_type": "Numerical",
-                "options": None,
-                "correct_answer": "1.0",
-                "explanation": f"Numerical metric derived from course document '{doc_title}'.",
-                "difficulty": difficulty,
-                "topic_name": topic_name,
-                "source_chunk_ids": [c_id],
-                "source_metadata": src_meta
-            }
-            questions.append(q_obj)
-
-    return questions[:question_count]
+    return all_questions[:target_count]

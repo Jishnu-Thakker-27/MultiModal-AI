@@ -92,34 +92,33 @@ def extract_pdf_content(
         except Exception as t_err:
             logger.debug(f"Table extraction notice on page {actual_page}: {t_err}")
 
-        # 3. Visual element detection & OCR fallback
+        # 3. Visual element detection & OCR fallback (only for purely scanned pages with almost zero text)
         image_list = page.get_images()
         has_images = len(image_list) > 0
         figure_info = f"\n[Visual Element: Page contains {len(image_list)} diagram(s)/figure(s)]" if has_images else ""
 
         ocr_text = ""
-        if has_images or len(full_text) < 100:
+        # Only run expensive OCR if native digital text extraction found almost nothing (< 40 characters)
+        if len(full_text) < 40 and has_images:
             try:
                 import pytesseract
                 from PIL import Image
                 import io
 
-                pix = page.get_pixmap(dpi=150)
+                pix = page.get_pixmap(dpi=100)
                 img = Image.open(io.BytesIO(pix.tobytes()))
                 ocr_result = pytesseract.image_to_string(img).strip()
-                if ocr_result and ocr_result.lower() not in full_text.lower():
-                    ocr_text = f"\n[OCR Diagram/Image Text: {ocr_result}]"
-                    logger.info(f"OCR extracted diagram text on page {actual_page}")
+                if ocr_result:
+                    ocr_text = f"\n[OCR Scanned Text: {ocr_result}]"
+                    logger.info(f"OCR extracted scanned text on page {actual_page}")
             except Exception as ocr_err:
-                if len(full_text) < 20:
-                    ocr_text = "\n[Visual Content: Scanned diagram/figure page]"
+                ocr_text = "\n[Visual Content: Scanned diagram/figure page]"
                 logger.debug(f"OCR Renderer status on page {actual_page}: {ocr_err}")
 
         # 4. Mathematical content detection
         has_math = bool(re.search(r'(\\sum|\\int|\\sigma|\\alpha|\\beta|\\gamma|=|y\s*=\s*a|\^|\\\[|\\\(|\+|-|\*|/|matrix|least\s*squares)', full_text, re.IGNORECASE))
 
         # 5. Page Type Classification
-        # Cover metadata detection: Page 1 with syllabus/course headers, low paragraph count
         is_cover_page = False
         if actual_page == 1 or (page_num < 2 and re.search(r'(syllabus|course\s*code|unit-\d+|department\s*of|university|credits)', full_text, re.IGNORECASE) and len(full_text.split('\n')) < 15):
             is_cover_page = True
@@ -133,17 +132,8 @@ def extract_pdf_content(
         else:
             page_type = "TEXT"
 
-        # 6. Adaptive visual page rendering (PNG image generated for visual, math, scanned, or cover pages)
+        # 6. Page visual path (Native browser PDF viewer serves pages directly without heavy disk rasterization)
         visual_image_path = None
-        if page_type in ["VISUAL_MATHEMATICAL", "SCANNED", "COVER_METADATA"]:
-            try:
-                pix = page.get_pixmap(dpi=150)
-                img_filename = f"page_{actual_page}.png"
-                img_dest = os.path.join(page_images_dir, img_filename)
-                pix.save(img_dest)
-                visual_image_path = img_dest
-            except Exception as render_err:
-                logger.debug(f"Page visual render status on page {actual_page}: {render_err}")
 
         combined_text = (full_text + ocr_text + figure_info + table_text).strip()
         if not combined_text:

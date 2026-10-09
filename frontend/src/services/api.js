@@ -61,7 +61,10 @@ export const getConversations = async () => {
 };
 
 export const createConversation = async (data = {}) => {
-  const response = await api.post('/conversations', data);
+  const userName = typeof window !== 'undefined' ? localStorage.getItem('user_name') : null;
+  const payload = { ...data };
+  if (userName) payload.student_name = userName;
+  const response = await api.post('/conversations', payload);
   return response.data;
 };
 
@@ -81,7 +84,10 @@ export const deleteConversation = async (conversationId) => {
 };
 
 export const postConversationChat = async (conversationId, question, tone = 'Intuitive Analogy') => {
-  const response = await api.post(`/conversations/${conversationId}/chat`, { question, tone });
+  const userName = typeof window !== 'undefined' ? localStorage.getItem('user_name') : null;
+  const payload = { question, tone };
+  if (userName) payload.student_name = userName;
+  const response = await api.post(`/conversations/${conversationId}/chat`, payload);
   return response.data;
 };
 
@@ -117,6 +123,13 @@ export const getChatHistory = async (courseId) => {
   return response.data;
 };
 
+export const getLearnerTopicMastery = async (topicName, conversationId = null, userId = 'demo_student') => {
+  const params = { topic_name: topicName, user_id: userId };
+  if (conversationId) params.conversation_id = conversationId;
+  const response = await api.get('/learner/topic-mastery', { params });
+  return response.data;
+};
+
 export const generateAssessment = async (courseId, params) => {
   const response = await api.post(`/courses/${courseId}/assessments/generate`, params);
   return response.data;
@@ -147,6 +160,17 @@ export const runEvaluation = async () => {
 
 export const getCourseConceptMap = async (courseId) => {
   const response = await api.get(`/courses/${courseId}/concept-map`);
+  return response.data;
+};
+
+export const postHintLadder = async (conversationId, problemText, hintLevel = 1, studentAttempt = null) => {
+  const response = await api.post(`/conversations/${conversationId}/hint-ladder`, {
+    conversation_id: conversationId,
+    problem_text: problemText,
+    hint_level: hintLevel,
+    student_attempt: studentAttempt,
+    user_id: 'demo_student',
+  });
   return response.data;
 };
 

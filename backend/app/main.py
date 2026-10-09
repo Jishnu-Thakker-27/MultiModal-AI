@@ -5,7 +5,7 @@ import logging
 from app.config import settings
 from app.database.session import init_db
 from app.api import (
-    courses, documents, chat, topics, assessments, mastery, dashboard, evaluation, conversations
+    courses, documents, chat, topics, assessments, mastery, dashboard, evaluation, conversations, assistant
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -58,3 +58,4 @@ app.include_router(assessments.router)
 app.include_router(mastery.router)
 app.include_router(dashboard.router)
 app.include_router(evaluation.router)
+app.include_router(assistant.router)

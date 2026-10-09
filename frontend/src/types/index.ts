@@ -1,4 +1,5 @@
 export type ScreenType =
+  | 'os-home'
   | 'welcome'
   | 'tutor-workspace'
   | 'adaptive-quizzes'
